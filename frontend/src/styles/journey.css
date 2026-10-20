@@ -1,0 +1,289 @@
+/* AI LAB // INTERACTIVE JOURNEY SCHEMATIC STYLES */
+
+.journey-section {
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+  padding: 64px 20px 100px;
+}
+
+.journey-masthead {
+  border-bottom: 1px solid var(--color-gray-600);
+  padding-bottom: 24px;
+  margin-bottom: 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.journey-title-group h2 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-white);
+  margin-bottom: 8px;
+}
+
+.journey-subtitle {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.journey-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--color-gray-500);
+}
+
+.legend-swatch.active {
+  background: var(--color-white);
+}
+
+.legend-swatch.negative {
+  border-style: dashed;
+}
+
+/* Chapter Container */
+.chapter-container {
+  margin-bottom: 48px;
+  border: 1px solid var(--color-gray-700);
+  background: var(--color-ink-950);
+  position: relative;
+}
+
+.chapter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--color-ink-900);
+  border-bottom: 1px solid var(--color-gray-700);
+}
+
+.chapter-tag-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chapter-number {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--color-white);
+  padding: 2px 6px;
+  border: 1px solid var(--color-gray-500);
+}
+
+.chapter-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--color-white);
+  text-transform: uppercase;
+}
+
+.chapter-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Chapter Schematic Grid */
+.chapter-nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  background: var(--color-black);
+}
+
+/* Experiment Node Chip */
+.experiment-node-chip {
+  background: var(--color-ink-950);
+  border: 1px solid var(--color-gray-700);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  text-align: left;
+}
+
+.experiment-node-chip:hover {
+  border-color: var(--color-gray-400);
+  background: var(--color-ink-900);
+  transform: translateY(-2px);
+}
+
+.experiment-node-chip.selected {
+  border-color: var(--color-white);
+  background: var(--color-ink-850);
+  outline: 1px solid var(--color-white);
+}
+
+.experiment-node-chip.negative-result {
+  border-style: dashed;
+}
+
+.node-chip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.node-number {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-white);
+}
+
+.node-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+  min-height: 32px;
+}
+
+.node-metrics-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid var(--color-gray-700);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.node-headline-val {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-white);
+}
+
+.node-sub-val {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Inspection Drawer */
+.node-preview-drawer {
+  grid-column: 1 / -1;
+  background: var(--color-ink-900);
+  border: 1px solid var(--color-gray-500);
+  padding: 24px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  align-items: center;
+  animation: drawerSlide 0.2s ease-out;
+}
+
+@keyframes drawerSlide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drawer-tagline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.drawer-question {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-style: italic;
+  color: var(--color-white);
+  line-height: 1.45;
+}
+
+.drawer-takeaway {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  background: var(--color-black);
+  padding: 10px 14px;
+  border-left: 2px solid var(--color-white);
+}
+
+.drawer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.btn-open-dossier {
+  background: var(--color-white);
+  color: var(--color-black);
+  border: 1px solid var(--color-white);
+  padding: 12px 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.btn-open-dossier:hover {
+  background: var(--color-gray-200);
+  transform: translateY(-1px);
+}
+
+.btn-close-drawer {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--color-gray-600);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-close-drawer:hover {
+  color: var(--color-white);
+  border-color: var(--color-gray-400);
+}

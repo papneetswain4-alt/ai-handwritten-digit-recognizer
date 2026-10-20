@@ -1,0 +1,129 @@
+# ==============================================================================
+# Python & Bytecode
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==============================================================================
+# Virtual Environments
+# ==============================================================================
+.venv/
+backend/.venv/
+venv/
+ENV/
+env/
+
+# ==============================================================================
+# Jupyter Notebooks & Checkpoints
+# ==============================================================================
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ==============================================================================
+# Node.js & Frontend Build Outputs
+# ==============================================================================
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+frontend/dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================================================================
+# ML Datasets (Defense-in-depth against large dataset push rejections)
+# ==============================================================================
+# Large compressed archives and raw binary datasets
+*.tar.gz
+*.tar
+*.zip
+*.gz
+*.idx3-ubyte
+*.idx1-ubyte
+
+# Backend raw and processed data directories
+backend/data/raw/*
+!backend/data/raw/.gitkeep
+backend/data/processed/*
+!backend/data/processed/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Real-world handwriting samples in backend/data/real_world/ are preserved
+# as lightweight demo assets (~0.5 KB each).
+
+# ==============================================================================
+# Model Checkpoints & Large Weights
+# ==============================================================================
+*.pth
+*.onnx
+*.pkl
+*.h5
+backend/models/*
+!backend/models/.gitkeep
+models/*
+!models/.gitkeep
+
+# Exclude large .pt files globally by default
+*.pt
+
+# Whitelist small trained models for out-of-the-box demo inference (~1.65 MB each)
+!backend/models/cnn_mnist.pt
+!backend/models/cnn_mnist_augmented.pt
+
+# ==============================================================================
+# Experiments, Logs & Scratch Artifacts
+# ==============================================================================
+backend/experiments/*
+!backend/experiments/.gitkeep
+experiments/*
+!experiments/.gitkeep
+logs/
+*.log
+scratch/
+backend/scratch/
+
+# ==============================================================================
+# Secrets & Environment Variables
+# ==============================================================================
+.env
+.env.*
+*.env
+backend/.env
+backend/.env.*
+
+# ==============================================================================
+# Operating System & IDE Artifacts
+# ==============================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~

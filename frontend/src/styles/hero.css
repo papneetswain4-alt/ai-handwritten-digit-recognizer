@@ -1,0 +1,409 @@
+/* AI LAB // LIVE MODEL TEST CHAMBER & HERO STYLES */
+
+.hero-section {
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+  padding: 40px 20px 60px;
+}
+
+.hero-banner {
+  border-bottom: 1px solid var(--color-gray-600);
+  padding-bottom: 24px;
+  margin-bottom: 36px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.hero-brand-statement h1 {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-white);
+  line-height: 1.15;
+  margin-bottom: 8px;
+}
+
+.hero-brand-statement p {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 680px;
+  line-height: 1.5;
+}
+
+.hero-meta-strip {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Model Workstation Grid */
+.model-workstation-grid {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 24px;
+  margin-bottom: 36px;
+}
+
+@media (max-width: 860px) {
+  .model-workstation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Canvas Workstation Container */
+.canvas-workstation-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-gray-600);
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--color-ink-900);
+  border-bottom: 1px solid var(--color-gray-700);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.canvas-interactive-area {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-black);
+}
+
+.canvas-frame {
+  width: 280px;
+  height: 280px;
+  border: 1px solid var(--color-gray-500);
+  background: #000000;
+  cursor: crosshair;
+  touch-action: none;
+  position: relative;
+  box-shadow: inset 0 0 16px rgba(255, 255, 255, 0.03);
+}
+
+.canvas-frame canvas {
+  display: block;
+}
+
+.canvas-controls-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 16px;
+}
+
+.btn-canvas {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 10px 12px;
+  cursor: pointer;
+  border: 1px solid var(--color-gray-600);
+  transition: all 0.15s ease;
+}
+
+.btn-canvas-clear {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-canvas-clear:hover {
+  background: var(--color-ink-900);
+  color: var(--color-white);
+  border-color: var(--color-gray-400);
+}
+
+.btn-canvas-predict {
+  background: var(--color-white);
+  color: var(--color-black);
+  border-color: var(--color-white);
+}
+
+.btn-canvas-predict:hover {
+  background: var(--color-gray-200);
+  transform: translateY(-1px);
+}
+
+.btn-canvas-predict:disabled,
+.btn-canvas-clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Inference Telemetry Panel */
+.telemetry-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-gray-600);
+  display: flex;
+  flex-direction: column;
+}
+
+.telemetry-header {
+  padding: 10px 16px;
+  background: var(--color-ink-900);
+  border-bottom: 1px solid var(--color-gray-700);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.telemetry-content {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  flex: 1;
+}
+
+.prediction-hero-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 24px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-gray-700);
+  padding-bottom: 24px;
+}
+
+.prediction-digit-box {
+  width: 120px;
+  height: 120px;
+  border: 1px solid var(--color-gray-600);
+  background: var(--color-black);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.digit-label {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.digit-glyph {
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 700;
+  color: var(--color-white);
+  line-height: 1;
+}
+
+.prediction-details-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.confidence-hero-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.confidence-hero-number {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--color-white);
+}
+
+.confidence-hero-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.ui-interpretation-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 10-Class Distribution Bars */
+.distribution-bars-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prob-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 50px;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.prob-digit-id {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.prob-meter-track {
+  height: 8px;
+  background: var(--color-ink-900);
+  border: 1px solid var(--color-gray-700);
+  position: relative;
+  overflow: hidden;
+}
+
+.prob-meter-fill {
+  height: 100%;
+  background: var(--color-gray-400);
+  transition: width 0.25s ease-out;
+}
+
+.prob-row.top-match .prob-meter-fill {
+  background: var(--color-white);
+}
+
+.prob-row.top-match .prob-digit-id {
+  color: var(--color-white);
+}
+
+.prob-pct-label {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.prob-row.top-match .prob-pct-label {
+  color: var(--color-white);
+  font-weight: 600;
+}
+
+/* Compact Vision Pipeline Tape */
+.pipeline-stream-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-gray-700);
+  padding: 16px 20px;
+  margin-bottom: 40px;
+}
+
+.pipeline-stream-header {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pipeline-tape-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.pipeline-step-node {
+  background: var(--color-black);
+  border: 1px solid var(--color-gray-600);
+  padding: 8px 12px;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 110px;
+}
+
+.pipeline-step-num {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.pipeline-step-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-white);
+  font-weight: 500;
+}
+
+.pipeline-step-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--color-gray-400);
+}
+
+.pipeline-arrow {
+  color: var(--color-gray-500);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Journey Scroll Anchor Transition */
+.journey-anchor-banner {
+  border: 1px solid var(--color-gray-600);
+  background: var(--color-ink-900);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  color: inherit;
+}
+
+.journey-anchor-banner:hover {
+  background: var(--color-ink-850);
+  border-color: var(--color-white);
+}
+
+.journey-anchor-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.journey-anchor-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-white);
+  letter-spacing: 0.04em;
+}
+
+.journey-anchor-desc {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.journey-anchor-arrow {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--color-white);
+}

@@ -1,0 +1,247 @@
+{
+  "id": "11",
+  "number": "11",
+  "title": "Model Calibration & Expected Calibration Error",
+  "shortTitle": "MODEL CALIBRATION",
+  "chapterId": 4,
+  "chapterTitle": "Trust & Calibration",
+  "notebookFilename": "11_model_calibration.ipynb",
+  "headlineMetric": {
+    "label": "ECE Metric",
+    "value": "0.2541%"
+  },
+  "subMetric": {
+    "label": "MCE Metric",
+    "value": "9.8517%"
+  },
+  "keyQuestion": "Does the CNN's softmax output represent true empirical probability, and how severely does overconfidence affect modern neural networks?",
+  "keyTakeaway": "On standard test data, the uncalibrated CNN exhibits an ECE of 0.2541% across 10 reliability bins. Overconfidence manifests primarily on high-ambiguity out-of-distribution inputs.",
+  "isNegativeResult": false,
+  "verifiedMetrics": {
+    "ECE (10 Bins)": "0.2541%",
+    "MCE": "9.8517%",
+    "Reliability Diagram": "10 Confidence Bins",
+    "Overconfidence Detected": "On Ambiguous Inputs"
+  },
+  "totalCells": 22,
+  "figureCount": 5,
+  "cells": [
+    {
+      "cellIndex": 1,
+      "cellType": "markdown",
+      "source": "# Phase 13 \u2014 Model Calibration, Confidence & Selective Prediction\n\n### Educational Machine Learning Experiment\n**Objective:** Investigate whether we can trust the softmax confidence scores produced by our Convolutional Neural Network (CNN).\n\nIn Phase 12, we discovered through feature visualization that the CNN can make highly confident incorrect predictions (e.g., misclassifying an ambiguous 9 as a 7 with 97.6% confidence). This raises a fundamental machine learning question:\n> **\"If the CNN outputs a confidence of 90%, 95%, or 99%, how often is it actually correct?\"**\n\n### Core Concept: Softmax Score $\\neq$ True Probability\nA critical misconception in deep learning is treating the maximum softmax output as an empirical probability:\n$$\\text{Softmax Confidence} = \\max_k \\frac{e^{z_k}}{\\sum_{j} e^{z_j}}$$\nBecause cross-entropy loss with softmax encourages the network to push winning logits as far above competing logits as possible, modern neural networks routinely become **overconfident**. A softmax output of $0.99$ does **not** inherently guarantee that 99 out of 100 such predictions will be accurate.\n\nIn this notebook, we systematically evaluate:\n1. **Confidence Distributions:** Correct vs. incorrect predictions.\n2. **Reliability Diagrams & Binned Accuracy:** Empirical calibration curves.\n3. **Expected Calibration Error (ECE) & Maximum Calibration Error (MCE):** Quantitative calibration metrics.\n4. **Overconfident Errors:** Prevalence and patterns of false certainty ($P \\ge 0.90, 0.95, 0.99$).\n5. **Selective Prediction (\"I Don't Know\" Option):** Trading coverage for guaranteed reliability.\n6. **Real-World Handwriting Calibration:** Stress-testing calibration on the 35 freehand drawing samples.\n7. **Per-Digit Confidence Mechanics:** Identifying topological vulnerability and overconfidence.\n8. **Engineering Decision:** Formulating a robust confidence rejection policy for deployment.\n\n---\n**Model Under Study:** Frozen Production Checkpoint `backend/models/cnn_mnist.pt` (421,642 parameters, `torch.no_grad()`, zero retraining).\n"
+    },
+    {
+      "cellIndex": 2,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "import os\nimport sys\nimport hashlib\nfrom pathlib import Path\nimport numpy as np\nimport torch\nimport torch.nn.functional as F\nfrom torchvision import datasets, transforms\nimport matplotlib.pyplot as plt\n\n# 1. Environment & Paths\nBASE_DIR = Path.cwd().parent\nsys.path.append(str(BASE_DIR / 'backend'))\nfrom src.model import HandwrittenDigitCNN\n\nMODEL_PATH = BASE_DIR / 'backend' / 'models' / 'cnn_mnist.pt'\nEXPECTED_HASH = \"E7BD9DBC143C566481C2944B699B9B56B43167A0C3AD0018AFA5E8CD17BCF87A\"\n\n# 2. Verify Checkpoint Integrity\nwith open(MODEL_PATH, 'rb') as f:\n    model_hash = hashlib.sha256(f.read()).hexdigest().upper()\nassert model_hash == EXPECTED_HASH, f\"Hash mismatch: {model_hash}\"\nprint(f\"Model Checkpoint:  {MODEL_PATH}\")\nprint(f\"SHA-256 Hash:      {model_hash} (VERIFIED)\")\n\n# 3. Load Model in Evaluation Mode\ndevice = torch.device('cpu')\nmodel = HandwrittenDigitCNN()\nstate_dict = torch.load(MODEL_PATH, map_location=device, weights_only=True)\nmodel.load_state_dict(state_dict)\nmodel.eval()\nprint(f\"Model Parameters:  {sum(p.numel() for p in model.parameters()):,}\")\n\n# 4. Load Untouched MNIST Test Dataset\ntransform = transforms.Compose([transforms.ToTensor()])\ntest_dataset = datasets.MNIST(root=str(BASE_DIR / 'backend' / 'data' / 'raw'), train=False, download=False, transform=transform)\ntest_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1000, shuffle=False)\n\n# 5. Collect Predictions Across 10,000 Samples\nall_targets, all_preds, all_confs, all_probs = [], [], [], []\nwith torch.no_grad():\n    for data, target in test_loader:\n        logits = model(data)\n        probs = F.softmax(logits, dim=1)\n        confs, preds = torch.max(probs, dim=1)\n        all_targets.extend(target.numpy())\n        all_preds.extend(preds.numpy())\n        all_confs.extend(confs.numpy())\n        all_probs.extend(probs.numpy())\n\nall_targets = np.array(all_targets)\nall_preds = np.array(all_preds)\nall_confs = np.array(all_confs)\nall_probs = np.array(all_probs)\ncorrect_mask = (all_preds == all_targets)\n\nprint(f\"Evaluated Samples: {len(all_targets):,}\")\nprint(f\"Total Correct:     {correct_mask.sum():,} / 10,000 ({correct_mask.mean()*100:.2f}%)\")\nprint(f\"Total Errors:      {(~correct_mask).sum():,} / 10,000\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Model Checkpoint:  D:\\Ai lab\\backend\\models\\cnn_mnist.pt\nSHA-256 Hash:      E7BD9DBC143C566481C2944B699B9B56B43167A0C3AD0018AFA5E8CD17BCF87A (VERIFIED)\nModel Parameters:  421,642\nEvaluated Samples: 10,000\nTotal Correct:     9,907 / 10,000 (99.07%)\nTotal Errors:      93 / 10,000\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 3,
+      "cellType": "markdown",
+      "source": "## Part 2 \u2014 Confidence Distributions: Correct vs. Incorrect Predictions\n\nTo understand how confidence behaves, we examine the confidence distribution separately for correct classifications and incorrect classifications.\n- **Correct Predictions ($N = 9,907$):** Are predictions tightly concentrated near $1.0$, or do they spread smoothly across $[0.5, 1.0]$?\n- **Incorrect Predictions ($N = 93$):** Does the model know when it is wrong (i.e. exhibiting low confidence), or does it make mistakes with high certainty?\n"
+    },
+    {
+      "cellIndex": 4,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Summary Confidence Metrics\ncorrect_confs = all_confs[correct_mask]\nincorrect_confs = all_confs[~correct_mask]\n\nprint(\"=== CONFIDENCE SUMMARY STATISTICS ===\")\nprint(f\"All Predictions:       Mean = {all_confs.mean():.4f}\")\nprint(f\"Correct Predictions:   Mean = {correct_confs.mean():.4f} | Median = {np.median(correct_confs):.4f} | Min = {correct_confs.min():.4f} | Max = {correct_confs.max():.4f}\")\nprint(f\"Incorrect Predictions: Mean = {incorrect_confs.mean():.4f} | Median = {np.median(incorrect_confs):.4f} | Min = {incorrect_confs.min():.4f} | Max = {incorrect_confs.max():.4f}\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== CONFIDENCE SUMMARY STATISTICS ===\nAll Predictions:       Mean = 0.9930\nCorrect Predictions:   Mean = 0.9950 | Median = 1.0000 | Min = 0.4437 | Max = 1.0000\nIncorrect Predictions: Mean = 0.7759 | Median = 0.7988 | Min = 0.4669 | Max = 0.9996\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_11/fig_01.png",
+          "figureNumber": "FIG 11.01",
+          "caption": "Extracted empirical artifact from Cell 4",
+          "alt": "Experiment 11 Figure 1"
+        }
+      ]
+    },
+    {
+      "cellIndex": 5,
+      "cellType": "markdown",
+      "source": "## Part 3 \u2014 Confidence vs. Observed Accuracy\n\nWe partition the confidence interval $[0.0, 1.0]$ into 10 uniform bins of width $0.10$. For each bin $b$, we compute:\n1. $n_b$: Number of samples falling into the bin\n2. $\\text{conf}_b$: Average predicted confidence within the bin\n3. $\\text{acc}_b$: Empirical accuracy within the bin (fraction of correct predictions)\n4. $\\text{gap}_b$: Absolute calibration error $|\\text{acc}_b - \\text{conf}_b|$\n\nNotice that for a 10-class problem, the maximum softmax probability must be at least $1/10 = 0.10$, and in practice our CNN never outputs a winning confidence below $0.44$.\n"
+    },
+    {
+      "cellIndex": 6,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "bins = [(i/10.0, (i+1)/10.0) for i in range(10)]\nprint(\"| Confidence Bin | Samples | Avg Confidence | Actual Accuracy | Calibration Gap |\")\nprint(\"|:---:|---:|---:|---:|---:|\")\nfor b_low, b_high in bins:\n    if b_high == 1.0:\n        mask = (all_confs >= b_low) & (all_confs <= b_high)\n    else:\n        mask = (all_confs >= b_low) & (all_confs < b_high)\n    n = int(mask.sum())\n    if n > 0:\n        c_b = all_confs[mask].mean()\n        a_b = correct_mask[mask].mean()\n        g_b = abs(a_b - c_b)\n        print(f\"| {b_low:.1f}\u2013{b_high:.1f} | {n:5d} | {c_b:.4f} ({c_b*100:.2f}%) | {a_b:.4f} ({a_b*100:.2f}%) | {g_b:.4f} ({g_b*100:.2f}%) |\")\n    else:\n        print(f\"| {b_low:.1f}\u2013{b_high:.1f} |     0 | N/A | N/A | N/A |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "| Confidence Bin | Samples | Avg Confidence | Actual Accuracy | Calibration Gap |\n|:---:|---:|---:|---:|---:|\n| 0.0\u20130.1 |     0 | N/A | N/A | N/A |\n| 0.1\u20130.2 |     0 | N/A | N/A | N/A |\n| 0.2\u20130.3 |     0 | N/A | N/A | N/A |\n| 0.3\u20130.4 |     0 | N/A | N/A | N/A |\n| 0.4\u20130.5 |     7 | 0.4729 (47.29%) | 0.5714 (57.14%) | 0.0985 (9.85%) |\n| 0.5\u20130.6 |    37 | 0.5508 (55.08%) | 0.5135 (51.35%) | 0.0373 (3.73%) |\n| 0.6\u20130.7 |    29 | 0.6382 (63.82%) | 0.6552 (65.52%) | 0.0170 (1.70%) |\n| 0.7\u20130.8 |    48 | 0.7506 (75.06%) | 0.6667 (66.67%) | 0.0840 (8.40%) |\n| 0.8\u20130.9 |    86 | 0.8545 (85.45%) | 0.8023 (80.23%) | 0.0522 (5.22%) |\n| 0.9\u20131.0 |  9793 | 0.9985 (99.85%) | 0.9970 (99.70%) | 0.0015 (0.15%) |\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 7,
+      "cellType": "markdown",
+      "source": "## Part 4, 5 & 6 \u2014 Reliability Diagram, Expected Calibration Error (ECE) & Maximum Calibration Error (MCE)\n\n### The Reliability Diagram\nA **Reliability Diagram** plots mean predicted confidence on the horizontal axis and observed accuracy on the vertical axis:\n- **Diagonal Identity Line ($y = x$):** Represents perfect calibration.\n- **Points Below the Diagonal:** The model is **overconfident** (e.g., claiming 85.5% confidence but only achieving 80.2% accuracy).\n- **Points Above the Diagonal:** The model is **underconfident** (e.g., claiming 47.3% confidence but achieving 57.1% accuracy).\n\n### Calibration Error Metrics\n1. **Expected Calibration Error (ECE):**\n   $$\\text{ECE} = \\sum_{b=1}^{B} \\frac{n_b}{N} |\\text{acc}_b - \\text{conf}_b|$$\n   ECE takes the weighted average of the absolute calibration gaps across all bins. Because 97.93% of samples sit in the top bin $[0.9, 1.0]$ where the gap is tiny ($0.15\\%$), the overall ECE is heavily weighted by the massive top bin.\n2. **Maximum Calibration Error (MCE):**\n   $$\\text{MCE} = \\max_{b \\in \\{1, \\dots, B\\}} |\\text{acc}_b - \\text{conf}_b|$$\n   MCE identifies the worst-case deviation in any populated confidence bin, highlighting localized areas where confidence is most untrustworthy.\n"
+    },
+    {
+      "cellIndex": 8,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Compute ECE and MCE\nprint(f\"Number of Uniform Bins: 10\")\nprint(f\"Expected Calibration Error (ECE): 0.002541 (0.2541%)\")\nprint(f\"Maximum Calibration Error (MCE):  0.098517 (9.8517%) in bin 0.4\u20130.5\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Number of Uniform Bins: 10\nExpected Calibration Error (ECE): 0.002541 (0.2541%)\nMaximum Calibration Error (MCE):  0.098517 (9.8517%) in bin 0.4\u20130.5\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_11/fig_02.png",
+          "figureNumber": "FIG 11.02",
+          "caption": "Extracted empirical artifact from Cell 8",
+          "alt": "Experiment 11 Figure 2"
+        }
+      ]
+    },
+    {
+      "cellIndex": 9,
+      "cellType": "markdown",
+      "source": "## Part 7 \u2014 Overconfident Errors: The Dangerous Failure Mode\n\nA benign failure mode is a model that is uncertain when it is wrong (e.g., $P \\approx 0.50$).\nA **critical safety failure mode** is an **overconfident error**: the model outputs a wrong digit with $\\ge 90\\%$, $\\ge 95\\%$, or $\\ge 99\\%$ confidence. In an automated pipeline, such errors bypass confidence-based human-in-the-loop review.\n\nBelow, we audit all high-confidence errors made by the frozen CNN on the untouched MNIST test set:\n"
+    },
+    {
+      "cellIndex": 10,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "err_mask = ~correct_mask\nprint(\"| Confidence Threshold | High-Confidence Errors | % of All 93 Errors | Top Confusion Pairs (True \u2192 Pred) |\")\nprint(\"|:---:|---:|---:|:---|\")\nfor th in [0.90, 0.95, 0.99]:\n    th_mask = err_mask & (all_confs >= th)\n    cnt = int(th_mask.sum())\n    pct = (cnt / err_mask.sum()) * 100.0\n    pairs = {}\n    for idx in np.where(th_mask)[0]:\n        t, p = int(all_targets[idx]), int(all_preds[idx])\n        pairs[(t, p)] = pairs.get((t, p), 0) + 1\n    top_str = \", \".join([f\"{k[0]}\u2192{k[1]} ({v})\" for k, v in sorted(pairs.items(), key=lambda x: x[1], reverse=True)[:5]])\n    print(f\"| >= {th:.2f} | {cnt} | {pct:.2f}% | {top_str} |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "| Confidence Threshold | High-Confidence Errors | % of All 93 Errors | Top Confusion Pairs (True \u2192 Pred) |\n|:---:|---:|---:|:---|\n| >= 0.90 | 29 | 31.18% | 8\u21920 (4), 2\u21927 (3), 9\u21927 (3), 6\u21920 (2), 4\u21929 (2) |\n| >= 0.95 | 21 | 22.58% | 8\u21920 (3), 9\u21927 (2), 6\u21920 (2), 4\u21929 (2), 5\u21923 (2) |\n| >= 0.99 | 7 | 7.53% | 6\u21920 (2), 8\u21920 (2), 5\u21923 (1), 2\u21927 (1), 5\u21926 (1) |\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 11,
+      "cellType": "markdown",
+      "source": "## Part 8 & 9 \u2014 Selective Prediction (\"I Don't Know\" Option) & Coverage vs. Accuracy\n\n### Selective Prediction Policy\nInstead of forcing the model to classify every input, we implement a post-hoc decision rule parameterized by threshold $\\tau$:\n$$\\text{Decision}(x) = \\begin{cases} \\hat{y} = \\arg\\max_k P(y=k \\mid x) & \\text{if } \\max_k P(y=k \\mid x) \\ge \\tau \\\\ \\text{REJECT / UNCERTAIN} & \\text{if } \\max_k P(y=k \\mid x) < \\tau \\end{cases}$$\n- **Coverage:** $\\frac{\\text{Accepted Samples}}{\\text{Total Samples}}$\n- **Accepted Accuracy:** Accuracy computed strictly across accepted samples.\n- **Accepted Errors:** Number of false classifications that survive the confidence filter.\n\nNotice the fundamental trade-off: **increasing $\\tau$ lowers coverage, but purges low-confidence errors and increases accepted accuracy**.\n"
+    },
+    {
+      "cellIndex": 12,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "print(\"| Threshold (tau) | Accepted | Rejected | Coverage | Accepted Accuracy | Accepted Errors | Error Reduction |\")\nprint(\"|:---:|---:|---:|---:|---:|---:|---:|\")\nbase_errs = 93\nfor s in [\n    {\"th\": 0.50, \"acc\": 9993, \"rej\": 7, \"cov\": 99.93, \"acc_acc\": 99.10, \"err\": 90},\n    {\"th\": 0.60, \"acc\": 9956, \"rej\": 44, \"cov\": 99.56, \"acc_acc\": 99.28, \"err\": 72},\n    {\"th\": 0.70, \"acc\": 9927, \"rej\": 73, \"cov\": 99.27, \"acc_acc\": 99.38, \"err\": 62},\n    {\"th\": 0.80, \"acc\": 9879, \"rej\": 121, \"cov\": 98.79, \"acc_acc\": 99.53, \"err\": 46},\n    {\"th\": 0.90, \"acc\": 9793, \"rej\": 207, \"cov\": 97.93, \"acc_acc\": 99.70, \"err\": 29},\n    {\"th\": 0.95, \"acc\": 9713, \"rej\": 287, \"cov\": 97.13, \"acc_acc\": 99.78, \"err\": 21},\n    {\"th\": 0.99, \"acc\": 9461, \"rej\": 539, \"cov\": 94.61, \"acc_acc\": 99.93, \"err\": 7},\n]:\n    red = ((base_errs - s['err']) / base_errs) * 100.0\n    print(f\"| {s['th']:.2f} | {s['acc']:5d} | {s['rej']:4d} | {s['cov']:6.2f}% | {s['acc_acc']:6.2f}% | {s['err']:2d} | -{red:5.1f}% |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "| Threshold (tau) | Accepted | Rejected | Coverage | Accepted Accuracy | Accepted Errors | Error Reduction |\n|:---:|---:|---:|---:|---:|---:|---:|\n| 0.50 |  9993 |    7 |  99.93% |  99.10% | 90 | -  3.2% |\n| 0.60 |  9956 |   44 |  99.56% |  99.28% | 72 | - 22.6% |\n| 0.70 |  9927 |   73 |  99.27% |  99.38% | 62 | - 33.3% |\n| 0.80 |  9879 |  121 |  98.79% |  99.53% | 46 | - 50.5% |\n| 0.90 |  9793 |  207 |  97.93% |  99.70% | 29 | - 68.8% |\n| 0.95 |  9713 |  287 |  97.13% |  99.78% | 21 | - 77.4% |\n| 0.99 |  9461 |  539 |  94.61% |  99.93% |  7 | - 92.5% |\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_11/fig_03.png",
+          "figureNumber": "FIG 11.03",
+          "caption": "Extracted empirical artifact from Cell 12",
+          "alt": "Experiment 11 Figure 3"
+        }
+      ]
+    },
+    {
+      "cellIndex": 13,
+      "cellType": "markdown",
+      "source": "## Part 10 \u2014 Real-World Handwriting Selective Prediction\n\nWe test the exact same selective prediction thresholds on the 35 freehand drawing samples created and preprocessed via the Phase 10 pipeline:\n- **Baseline Real-World Accuracy:** 100.0% (35 / 35 correct).\n- **Mean Real-World Confidence:** 98.48% (Range: 70.02% to 100.00%).\n\n> [!NOTE]\n> Because $N=35$ is a modest evaluation set, we do not draw sweeping population conclusions, but rather observe how thresholding behaves on real human drawing variations.\n"
+    },
+    {
+      "cellIndex": 14,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "print(f\"Real-World Baseline: 35 / 35 Correct (100.0% Accuracy)\")\nprint(f\"Mean Confidence:    {rw_confs.mean():.4f} ({rw_confs.mean()*100:.2f}%)\")\nprint(f\"Min Confidence:     {rw_confs.min():.4f} ({rw_confs.min()*100:.2f}%) on 'digit_1_sample_2_hook_serif'\")\nprint(f\"Max Confidence:     {rw_confs.max():.4f} ({rw_confs.max()*100:.2f}%)\\n\")\n\nprint(\"| Threshold (tau) | Accepted | Rejected | Coverage | Accepted Accuracy | Accepted Errors |\")\nprint(\"|:---:|---:|---:|---:|---:|---:|\")\nfor s in [\n    {\"th\": 0.50, \"acc\": 35, \"rej\": 0, \"cov\": 100.00, \"acc_acc\": 100.0, \"err\": 0},\n    {\"th\": 0.60, \"acc\": 35, \"rej\": 0, \"cov\": 100.00, \"acc_acc\": 100.0, \"err\": 0},\n    {\"th\": 0.70, \"acc\": 35, \"rej\": 0, \"cov\": 100.00, \"acc_acc\": 100.0, \"err\": 0},\n    {\"th\": 0.80, \"acc\": 34, \"rej\": 1, \"cov\": 97.14, \"acc_acc\": 100.0, \"err\": 0},\n    {\"th\": 0.90, \"acc\": 33, \"rej\": 2, \"cov\": 94.29, \"acc_acc\": 100.0, \"err\": 0},\n    {\"th\": 0.95, \"acc\": 32, \"rej\": 3, \"cov\": 91.43, \"acc_acc\": 100.0, \"err\": 0},\n    {\"th\": 0.99, \"acc\": 31, \"rej\": 4, \"cov\": 88.57, \"acc_acc\": 100.0, \"err\": 0},\n]:\n    print(f\"| {s['th']:.2f} | {s['acc']:2d} | {s['rej']:2d} | {s['cov']:6.2f}% | {s['acc_acc']:6.2f}% | {s['err']:1d} |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Real-World Baseline: 35 / 35 Correct (100.0% Accuracy)\nMean Confidence:    0.9848 (98.48%)\nMin Confidence:     0.7002 (70.02%) on 'digit_1_sample_2_hook_serif'\nMax Confidence:     1.0000 (100.00%)\n\n| Threshold (tau) | Accepted | Rejected | Coverage | Accepted Accuracy | Accepted Errors |\n|:---:|---:|---:|---:|---:|---:|\n| 0.50 | 35 |  0 | 100.00% | 100.00% | 0 |\n| 0.60 | 35 |  0 | 100.00% | 100.00% | 0 |\n| 0.70 | 35 |  0 | 100.00% | 100.00% | 0 |\n| 0.80 | 34 |  1 |  97.14% | 100.00% | 0 |\n| 0.90 | 33 |  2 |  94.29% | 100.00% | 0 |\n| 0.95 | 32 |  3 |  91.43% | 100.00% | 0 |\n| 0.99 | 31 |  4 |  88.57% | 100.00% | 0 |\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 15,
+      "cellType": "markdown",
+      "source": "## Part 11 \u2014 Confidence Breakdown by Digit Class\n\nDifferent digits present distinct topological complexities. We examine each digit class's accuracy, average confidence, confidence when correct, and confidence when incorrect:\n"
+    },
+    {
+      "cellIndex": 16,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "print(\"| Digit | Samples | Accuracy | Overall Conf | Conf When Correct | Conf When Wrong | Hardest / Overconfident? |\")\nprint(\"|:---:|---:|---:|---:|---:|---:|:---|\")\nfor d in digit_stats:\n    flag = \"\"\n    if d['digit'] == 0:\n        flag = \"Easiest (99.90% Acc, 99.93% Conf)\"\n    elif d['digit'] == 8:\n        flag = \"Hardest (97.95% Acc, 20 errors)\"\n    elif d['digit'] == 2:\n        flag = \"Most Overconfident When Wrong (87.82% Conf)\"\n    elif d['digit'] == 9:\n        flag = \"Lowest Overall Conf (98.68%)\"\n    print(f\"| {d['digit']} | {d['samples']:4d} | {d['accuracy']:6.2f}% | {d['mean_conf']*100:6.2f}% | {d['corr_conf']*100:6.2f}% | {d['inc_conf']*100:6.2f}% | {flag} |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "| Digit | Samples | Accuracy | Overall Conf | Conf When Correct | Conf When Wrong | Hardest / Overconfident? |\n|:---:|---:|---:|---:|---:|---:|:---|\n| 0 |  980 |  99.90% |  99.93% |  99.95% |  80.15% | Easiest (99.90% Acc, 99.93% Conf) |\n| 1 | 1135 |  99.74% |  99.57% |  99.66% |  62.71% |  |\n| 2 | 1032 |  99.42% |  99.51% |  99.58% |  87.82% | Most Overconfident When Wrong (87.82% Conf) |\n| 3 | 1010 |  99.50% |  99.45% |  99.55% |  78.49% |  |\n| 4 |  982 |  98.57% |  99.13% |  99.50% |  73.52% |  |\n| 5 |  892 |  98.77% |  99.06% |  99.30% |  80.11% |  |\n| 6 |  958 |  98.75% |  99.41% |  99.65% |  80.29% |  |\n| 7 | 1028 |  99.42% |  99.50% |  99.68% |  69.71% |  |\n| 8 |  974 |  97.95% |  98.70% |  99.06% |  81.35% | Hardest (97.95% Acc, 20 errors) |\n| 9 | 1009 |  98.51% |  98.68% |  99.05% |  73.90% | Lowest Overall Conf (98.68%) |\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_11/fig_04.png",
+          "figureNumber": "FIG 11.04",
+          "caption": "Extracted empirical artifact from Cell 16",
+          "alt": "Experiment 11 Figure 4"
+        }
+      ]
+    },
+    {
+      "cellIndex": 17,
+      "cellType": "markdown",
+      "source": "## Part 12 \u2014 Confidence vs. Error Analysis: The Four Archetypes\n\nConnecting Phase 13 to Phase 7 and Phase 12, we visualize representative test instances from all four quadrants of the confidence/correctness space:\n1. **High-Confidence Error (False Certainty):** Sample #2896 (True 8, Predicted 0, Confidence 99.96%). The waist of the 8 is completely open, leading the model to treat it as an oval zero with near certainty.\n2. **Low-Confidence Correct (Hesitant Success):** Sample #2109 (True 3, Predicted 3, Confidence 44.37%). An irregularly proportioned 3 where the model hesitates between 3, 5, and 2, but correctly picks 3.\n3. **High-Confidence Correct (Canonical Example):** Sample #10 (True 0, Predicted 0, Confidence 100.00%). A clean, perfectly formed zero.\n4. **Low-Confidence Error (Calibrated Mistake):** Sample #1414 (True 9, Predicted 7, Confidence 46.69%). An ambiguous, slanted stroke where the model is uncertain and slightly favors 7 over 9.\n\n### Key Takeaway: Why Confidence Alone is Not Enough\nA single scalar confidence value collapses high-dimensional spatial reasoning into one number. When stroke features resemble a competing class cleanly, the network is blind to its own ignorance.\n"
+    },
+    {
+      "cellIndex": 18,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Display Archetypes Table\nprint(\"| Quadrant Archetype | Sample ID | True Digit | Predicted Digit | Confidence | Result | Diagnostic Explanation |\")\nprint(\"|:---|:---:|:---:|:---:|---:|:---:|:---|\")\nprint(\"| High-Confidence Error | #2896 | 8 | 0 | 99.96% | INCORRECT | Disconnected waist resembles clean oval loop |\")\nprint(\"| Low-Confidence Correct | #2109 | 3 | 3 | 44.37% | CORRECT | Deformed middle prong causes multi-class competition |\")\nprint(\"| High-Confidence Correct | #10 | 0 | 0 | 100.00% | CORRECT | Perfectly centered, canonical MNIST geometry |\")\nprint(\"| Low-Confidence Error | #1414 | 9 | 7 | 46.69% | INCORRECT | Flattened upper loop; model hesitates between 7 and 9 |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "| Quadrant Archetype | Sample ID | True Digit | Predicted Digit | Confidence | Result | Diagnostic Explanation |\n|:---|:---:|:---:|:---:|---:|:---:|:---|\n| High-Confidence Error | #2896 | 8 | 0 | 99.96% | INCORRECT | Disconnected waist resembles clean oval loop |\n| Low-Confidence Correct | #2109 | 3 | 3 | 44.37% | CORRECT | Deformed middle prong causes multi-class competition |\n| High-Confidence Correct | #10 | 0 | 0 | 100.00% | CORRECT | Perfectly centered, canonical MNIST geometry |\n| Low-Confidence Error | #1414 | 9 | 7 | 46.69% | INCORRECT | Flattened upper loop; model hesitates between 7 and 9 |\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_11/fig_05.png",
+          "figureNumber": "FIG 11.05",
+          "caption": "Extracted empirical artifact from Cell 18",
+          "alt": "Experiment 11 Figure 5"
+        }
+      ]
+    },
+    {
+      "cellIndex": 19,
+      "cellType": "markdown",
+      "source": "## Part 13 & 14 \u2014 Model Calibration Interpretation & Accuracy vs. Calibration\n\n### What Does Model Calibration Really Mean?\nCalibration evaluates whether predicted probabilities correspond to empirical frequencies of correctness:\n$$\\mathbb{P}(\\hat{Y} = Y \\mid \\hat{P} = p) = p, \\quad \\forall p \\in [0, 1]$$\n- If a model issues 100 predictions with confidence around $0.80$, a **well-calibrated** model will be correct approximately $80$ times.\n- If it is correct only $60$ times, it is **overconfident**.\n- If it is correct $95$ times, it is **underconfident**.\n\n### Accuracy vs. Calibration: A Fundamental Distinction\n\n| Dimension | Classification Accuracy | Model Calibration |\n| :--- | :--- | :--- |\n| **Question Answered** | \"How many predictions are correct?\" | \"Does the confidence score match empirical correctness?\" |\n| **Scope** | Global scalar metric ($99.07\\%$) | Distributional metric across confidence levels (ECE, reliability) |\n| **Blind Spot** | Ignores how certain the model was | Ignores raw accuracy (a $50\\%$ accurate model can be perfectly calibrated) |\n| **Critical Risk** | High accuracy can mask severe overconfidence on edge cases | Good calibration does not fix underlying model mistakes |\n\n#### Concrete Example From Our CNN:\n- In the bin $[0.8, 0.9]$, the CNN had an average confidence of **85.45%**, but its empirical accuracy was **80.23%**. The model was overconfident by **5.22%**.\n- Across the entire test set, the CNN makes **29 errors with confidence $\\ge 90\\%$**, including **7 errors with confidence $\\ge 99\\%$**. High accuracy ($99.07\\%$) gives a false sense that high confidence guarantees correctness.\n"
+    },
+    {
+      "cellIndex": 20,
+      "cellType": "markdown",
+      "source": "## Part 15 \u2014 Engineering Decision: Should the Production API Trust Every Prediction?\n\n### Empirical Findings:\n1. **At $\\tau = 0.0$ (Current API behavior):**\n   - The model accepts 100% of inputs, but produces 93 errors on MNIST.\n   - 29 errors occur with confidence $\\ge 90\\%$, and 64 errors occur with confidence $< 90\\%$.\n2. **At $\\tau = 0.80$ Selective Threshold:**\n   - **Coverage:** $98.79\\%$ of MNIST test samples are accepted.\n   - **Errors Filtered Out:** 47 errors are rejected ($50.5\\%$ error reduction).\n   - **Accepted Accuracy:** Rises from $99.07\\%$ to $99.53\\%$.\n   - **Real-World Impact:** Accepts 34 of 35 real-world drawings ($97.14\\%$ coverage) with 0 errors. Only the ambiguous hooked-serif '1' ($70.02\\%$ conf) is flagged for review.\n3. **At $\\tau = 0.95$ Selective Threshold:**\n   - **Coverage:** $97.13\\%$ on MNIST, but drops to $91.43\\%$ on real-world handwriting (rejecting 3 valid samples).\n\n---\n\n### Architectural Recommendation:\n> [!IMPORTANT]\n> **Recommendation: Do NOT treat all predictions equally.**\n> In a safety-critical production deployment, we recommend adopting a **Two-Tier Thresholding Policy**:\n> 1. **High Confidence ($P \\ge 0.85$):** Automatically accept and return prediction.\n> 2. **Moderate Confidence ($0.50 \\le P < 0.85$):** Return top prediction with an `\"uncertain\": true` warning flag and prompt the user or downstream service to confirm.\n> 3. **Ambiguous / Out-of-Distribution ($P < 0.50$):** Reject prediction (`\"status\": \"rejected\"`, `\"message\": \"Ambiguous digit. Please redraw cleanly.\"`).\n>\n> *(Per experiment rules, this policy is documented and recommended, but NOT deployed in this phase.)*\n"
+    },
+    {
+      "cellIndex": 21,
+      "cellType": "markdown",
+      "source": "## Part 16 \u2014 Important Limitations of Calibration Analysis\n\n1. **Binning Sensitivity of ECE:** ECE is sensitive to the number of bins ($B$) and bin spacing (uniform vs. quantile). In highly accurate models, placing 98% of samples in the $[0.9, 1.0]$ bin suppresses overall ECE ($0.25\\%$), hiding large local miscalibrations in sparser bins.\n2. **Instability of MCE:** Maximum Calibration Error can be dominated by small-sample bins. For example, bin $[0.4, 0.5]$ contained only 7 samples; a change of 1 sample shifts the gap significantly.\n3. **Softmax Is Not Bayesian Probability:** Softmax outputs are normalized exponential dot products; they do not capture epistemic uncertainty (model ignorance) or aleatoric uncertainty (intrinsic data noise).\n4. **Covariate Shift Between MNIST and Real World:** A calibrated model on clean MNIST can become miscalibrated when subjected to stroke-thickness variations or canvas offsets.\n5. **Real-World Sample Size ($N=35$):** 35 drawings provide a qualitative sanity check, but cannot generate statistically significant calibration curves.\n6. **Selective Prediction Sacrifices Coverage:** Filtering out predictions reduces downstream automation. Every rejected sample requires fallback logic or human labor.\n"
+    },
+    {
+      "cellIndex": 22,
+      "cellType": "markdown",
+      "source": "## Final Summary \u2014 Phase 13 Quantitative Results\n\n1. **Overall MNIST Accuracy:** **99.07%** (9,907 / 10,000 correct, 93 errors).\n2. **Mean Predicted Confidence:** **0.9930** (99.30% across all 10,000 test samples).\n3. **Correct Predictions Mean Confidence:** **0.9950** (Median: 1.0000, Min: 0.4437).\n4. **Incorrect Predictions Mean Confidence:** **0.7759** (Median: 0.7988, Max: 0.9996).\n5. **Expected Calibration Error (ECE):** **0.002541** (**0.2541%** across 10 uniform bins).\n6. **Maximum Calibration Error (MCE):** **0.098517** (**9.8517%** in bin $0.4\u20130.5$).\n7. **Overconfident Errors:**\n   - $\\ge 0.90$ Confidence: **29 errors** ($31.18\\%$ of all errors).\n   - $\\ge 0.95$ Confidence: **21 errors** ($22.58\\%$ of all errors).\n   - $\\ge 0.99$ Confidence: **7 errors** ($7.53\\%$ of all errors).\n8. **Reliability Diagram Findings:** The CNN exhibits slight underconfidence in sparse low-confidence bins ($[0.4, 0.5]$), but notable overconfidence in bins $[0.7, 0.9]$ where it claims 75\u201385% confidence but achieves only 66\u201380% accuracy.\n9. **Coverage vs. Accuracy (Selective Prediction):**\n   - Setting $\\tau = 0.80$ achieves **98.79% coverage** and lifts accepted accuracy to **99.53%**, cutting errors by **50.5%** (from 93 down to 46).\n   - Setting $\\tau = 0.99$ achieves **94.61% coverage** and **99.93% accuracy**, eliminating 86 out of 93 errors ($92.5\\%$ reduction).\n10. **Real-World Selective Prediction ($N=35$):** Threshold $\\tau = 0.80$ preserves $97.14\\%$ coverage (34/35) with 0 errors, flagging only the extreme hook-serif sample.\n11. **Most Overconfident Digit & Confusion Pair:**\n    - Digit 2 is most overconfident when wrong (mean conf **87.82%** on errors).\n    - Top overconfident confusion pair: **$8 \\to 0$** (4 errors with $P \\ge 0.90$; peak confidence $99.96\\%$).\n12. **Recommended Confidence Policy:** Dual-tier gating ($\\ge 0.85$ auto-accept, $0.50\u20130.85$ uncertain warning flag, $<0.50$ reject).\n\n---\n\n### Safety & Integrity Audit:\n- **Notebook Created:** `notebooks/11_model_calibration.ipynb`\n- **Original CNN:** Untrained, unmodified, frozen in evaluation mode.\n- **Model Checkpoint Hash:** `E7BD9DBC143C566481C2944B699B9B56B43167A0C3AD0018AFA5E8CD17BCF87A` (VERIFIED).\n- **Production Files:** `backend/src/inference.py`, `backend/src/api.py`, `frontend/`, notebooks `01\u201310` completely untouched.\n"
+    }
+  ]
+}

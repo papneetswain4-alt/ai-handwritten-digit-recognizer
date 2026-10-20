@@ -1,0 +1,454 @@
+[
+  {
+    "id": "01",
+    "number": "01",
+    "title": "Dataset Exploration & Topological Analysis",
+    "shortTitle": "DATA EXPLORATION",
+    "chapterId": 1,
+    "chapterTitle": "Foundations",
+    "notebookFilename": "01_dataset_exploration.ipynb",
+    "headlineMetric": {
+      "label": "Dataset Size",
+      "value": "70,000 Images"
+    },
+    "subMetric": {
+      "label": "Topology",
+      "value": "28 \u00d7 28 Grayscale"
+    },
+    "keyQuestion": "What are the structural properties, statistical distributions, and class balance of raw MNIST images before learning?",
+    "keyTakeaway": "Images are spatial manifolds rather than arbitrary vector arrays; border pixels carry zero entropy, while digits are centered 20x20 boxes.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Train Samples": "60,000",
+      "Test Samples": "10,000",
+      "Dimensions": "784 (28\u00d728)",
+      "Classes": "10 Balanced"
+    },
+    "figureCount": 4,
+    "dossierUrl": "/data/dossiers/exp01.json"
+  },
+  {
+    "id": "02",
+    "number": "02",
+    "title": "K-Nearest Neighbors (KNN) Baseline",
+    "shortTitle": "KNN BASELINE",
+    "chapterId": 1,
+    "chapterTitle": "Foundations",
+    "notebookFilename": "02_knn_baseline.ipynb",
+    "headlineMetric": {
+      "label": "Test Accuracy",
+      "value": "97.05%"
+    },
+    "subMetric": {
+      "label": "Parameters",
+      "value": "0 (Non-parametric)"
+    },
+    "keyQuestion": "How accurately can a non-parametric instance-based algorithm classify handwritten digits without explicit parameter optimization?",
+    "keyTakeaway": "Achieved a strong baseline of 97.05% with K=3 L2 distance, but incurs high test-time memory and prediction latency.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Test Accuracy": "97.05%",
+      "K Neighbors": "3",
+      "Errors": "295 / 10,000",
+      "Latency": "1.59 ms/sample"
+    },
+    "figureCount": 3,
+    "dossierUrl": "/data/dossiers/exp02.json"
+  },
+  {
+    "id": "03",
+    "number": "03",
+    "title": "KNN K Hyperparameter Experiment",
+    "shortTitle": "KNN K EXPERIMENT",
+    "chapterId": 1,
+    "chapterTitle": "Foundations",
+    "notebookFilename": "03_knn_k_experiment.ipynb",
+    "headlineMetric": {
+      "label": "Optimal K",
+      "value": "K = 3"
+    },
+    "subMetric": {
+      "label": "Tested Set",
+      "value": "K \u2208 {1, 3, 5, 7, 9}"
+    },
+    "keyQuestion": "How does varying the neighborhood parameter across discrete odd values K \u2208 {1, 3, 5, 7, 9} affect generalization and noise sensitivity?",
+    "keyTakeaway": "K=3 achieved optimal accuracy (97.05%). K=1 was prone to stroke noise, while K=9 caused boundary oversmoothing.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Tested Neighborhoods": "K \u2208 {1, 3, 5, 7, 9}",
+      "Optimal K": "3",
+      "K=1 Acc": "96.91%",
+      "K=3 Acc": "97.05%",
+      "K=9 Acc": "96.59%"
+    },
+    "figureCount": 1,
+    "dossierUrl": "/data/dossiers/exp03.json"
+  },
+  {
+    "id": "04",
+    "number": "04",
+    "title": "Logistic Regression & Linear Decision Boundaries",
+    "shortTitle": "LOGISTIC REGRESSION",
+    "chapterId": 1,
+    "chapterTitle": "Foundations",
+    "notebookFilename": "04_logistic_regression.ipynb",
+    "headlineMetric": {
+      "label": "Test Accuracy",
+      "value": "92.56%"
+    },
+    "subMetric": {
+      "label": "Parameters",
+      "value": "7,850 Weights"
+    },
+    "keyQuestion": "Can linear decision boundaries in 784-dimensional space separate non-linear handwritten digits, and what do the learned weights represent?",
+    "keyTakeaway": "Learned pixel-weight patterns and linear decision boundaries reach 92.56%, but cannot resolve overlapping stroke topologies without non-linearities.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Test Accuracy": "92.56%",
+      "Model Type": "Multinomial Logistic Regression",
+      "Weights": "7,840 + 10 bias",
+      "Errors": "744 / 10,000"
+    },
+    "figureCount": 4,
+    "dossierUrl": "/data/dossiers/exp04.json"
+  },
+  {
+    "id": "05",
+    "number": "05",
+    "title": "Artificial Neural Network (Multi-Layer Perceptron)",
+    "shortTitle": "NEURAL NETWORK",
+    "chapterId": 2,
+    "chapterTitle": "Neural Networks",
+    "notebookFilename": "05_neural_network.ipynb",
+    "headlineMetric": {
+      "label": "Test Accuracy",
+      "value": "97.49%"
+    },
+    "subMetric": {
+      "label": "Parameters",
+      "value": "101,770 Params"
+    },
+    "keyQuestion": "How significantly do non-linear activation functions and hidden layer feature combinations improve upon linear boundaries?",
+    "keyTakeaway": "ANN (784 \u2192 128 \u2192 10) reaches 97.49% accuracy, but flattening 28x28 images into 1D vectors destroys 2D spatial adjacency and lacks translation invariance.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Test Accuracy": "97.49%",
+      "Architecture": "784 -> 128 (ReLU) -> 10",
+      "Parameters": "101,770",
+      "Epochs": "10"
+    },
+    "figureCount": 4,
+    "dossierUrl": "/data/dossiers/exp05.json"
+  },
+  {
+    "id": "06",
+    "number": "06",
+    "title": "Convolutional Neural Network (CNN)",
+    "shortTitle": "CONVOLUTIONAL NETWORK",
+    "chapterId": 2,
+    "chapterTitle": "Neural Networks",
+    "notebookFilename": "06_cnn.ipynb",
+    "headlineMetric": {
+      "label": "Test Accuracy",
+      "value": "99.06%"
+    },
+    "subMetric": {
+      "label": "Parameters",
+      "value": "421,642 Params"
+    },
+    "keyQuestion": "How do spatial convolutions, parameter sharing, and pooling layers surpass fully connected networks on visual data?",
+    "keyTakeaway": "CNN preserves 2D geometry and achieves 99.06% accuracy. Shared 3x3 kernels learn translation-invariant spatial edge and curve hierarchies.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Test Accuracy": "99.06%",
+      "Conv Layers": "2 (32 & 64 ch)",
+      "Dense Hidden": "128",
+      "Total Parameters": "421,642"
+    },
+    "figureCount": 5,
+    "dossierUrl": "/data/dossiers/exp06.json"
+  },
+  {
+    "id": "07",
+    "number": "07",
+    "title": "CNN Error Analysis & Introspection",
+    "shortTitle": "ERROR ANALYSIS",
+    "chapterId": 3,
+    "chapterTitle": "Understanding the Model",
+    "notebookFilename": "07_cnn_error_analysis.ipynb",
+    "headlineMetric": {
+      "label": "Test Errors",
+      "value": "94 / 10,000"
+    },
+    "subMetric": {
+      "label": "Top Confusion",
+      "value": "Digit 4 vs 9 (14x)"
+    },
+    "keyQuestion": "Which digit pairs cause misclassifications in the 99.06% CNN, and are failures attributable to human ambiguity or model weakness?",
+    "keyTakeaway": "Out of 10,000 test images, exactly 94 were misclassified. Ambiguity concentrates in visually similar structural pairs (4\u21949, 7\u21942, 3\u21945).",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Total Errors": "94 / 10,000",
+      "Top Confusion Pair": "4 predicted as 9 (14 times)",
+      "Second Pair": "7 predicted as 2 (11 times)"
+    },
+    "figureCount": 6,
+    "dossierUrl": "/data/dossiers/exp07.json"
+  },
+  {
+    "id": "08",
+    "number": "08",
+    "title": "Real-World Preprocessing & Distribution Shift",
+    "shortTitle": "REAL-WORLD PREPROCESSING",
+    "chapterId": 3,
+    "chapterTitle": "Understanding the Model",
+    "notebookFilename": "08_real_world_preprocessing.ipynb",
+    "headlineMetric": {
+      "label": "Shift Accuracy",
+      "value": "85.7% \u2192 100%"
+    },
+    "subMetric": {
+      "label": "Real Digits",
+      "value": "35 Hand-drawn Tests"
+    },
+    "keyQuestion": "Why does a 99% MNIST model struggle on raw uncurated user drawings, and how can upstream vision normalization resolve distribution shift?",
+    "keyTakeaway": "Raw canvas drawings suffer covariate shift due to arbitrary scaling and off-center position. Implementing LeCun center-of-mass alignment restored accuracy from 85.7% to 100%.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Raw Accuracy": "85.7% (30/35)",
+      "Normalized Accuracy": "100.0% (35/35)",
+      "Centering Method": "Intensity Center of Mass",
+      "Aspect Box": "20\u00d720 into 28\u00d728"
+    },
+    "figureCount": 6,
+    "dossierUrl": "/data/dossiers/exp08.json"
+  },
+  {
+    "id": "09",
+    "number": "09",
+    "title": "Data Augmentation & Affine Invariance",
+    "shortTitle": "DATA AUGMENTATION",
+    "chapterId": 3,
+    "chapterTitle": "Understanding the Model",
+    "notebookFilename": "09_data_augmentation.ipynb",
+    "headlineMetric": {
+      "label": "MNIST Test Acc",
+      "value": "99.07% \u2192 98.83%"
+    },
+    "subMetric": {
+      "label": "Production Decision",
+      "value": "No Production Gain"
+    },
+    "keyQuestion": "Does injecting random affine transformations, rotations (\u00b110\u00b0), and translations during training improve real-world robustness?",
+    "keyTakeaway": "Augmented model achieved 98.83% MNIST test accuracy (vs 99.07% original). Both scored 100% on the 35 real-world digits. Because training overhead increased without real-world gain, the original model was kept.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Original CNN": "99.07%",
+      "Augmented CNN": "98.83%",
+      "Real-World 35 Digits": "100% (Both)",
+      "Production Decision": "KEEP ORIGINAL MODEL"
+    },
+    "figureCount": 5,
+    "dossierUrl": "/data/dossiers/exp09.json"
+  },
+  {
+    "id": "10",
+    "number": "10",
+    "title": "CNN Interpretability, Feature Maps & Saliency",
+    "shortTitle": "INTERPRETABILITY",
+    "chapterId": 3,
+    "chapterTitle": "Understanding the Model",
+    "notebookFilename": "10_cnn_interpretability.ipynb",
+    "headlineMetric": {
+      "label": "Filter Inspection",
+      "value": "32 + 64 Channels"
+    },
+    "subMetric": {
+      "label": "Saliency Maps",
+      "value": "Vanilla Gradients"
+    },
+    "keyQuestion": "What internal features do intermediate convolutional filters detect, and which input pixels drive output class logits?",
+    "keyTakeaway": "Layer 1 filters specialize in localized edge, slash, and loop detectors; Layer 2 combines these into digit-part geometries. Saliency maps confirm the model focuses on strokes rather than background.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Layer 1 Feature Maps": "32 @ 28\u00d728",
+      "Layer 2 Feature Maps": "64 @ 14\u00d714",
+      "Interpretability Methods": "Activation Maps, Saliency, Max-Act Filters"
+    },
+    "figureCount": 9,
+    "dossierUrl": "/data/dossiers/exp10.json"
+  },
+  {
+    "id": "11",
+    "number": "11",
+    "title": "Model Calibration & Expected Calibration Error",
+    "shortTitle": "MODEL CALIBRATION",
+    "chapterId": 4,
+    "chapterTitle": "Trust & Calibration",
+    "notebookFilename": "11_model_calibration.ipynb",
+    "headlineMetric": {
+      "label": "ECE Metric",
+      "value": "0.2541%"
+    },
+    "subMetric": {
+      "label": "MCE Metric",
+      "value": "9.8517%"
+    },
+    "keyQuestion": "Does the CNN's softmax output represent true empirical probability, and how severely does overconfidence affect modern neural networks?",
+    "keyTakeaway": "On standard test data, the uncalibrated CNN exhibits an ECE of 0.2541% across 10 reliability bins. Overconfidence manifests primarily on high-ambiguity out-of-distribution inputs.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "ECE (10 Bins)": "0.2541%",
+      "MCE": "9.8517%",
+      "Reliability Diagram": "10 Confidence Bins",
+      "Overconfidence Detected": "On Ambiguous Inputs"
+    },
+    "figureCount": 5,
+    "dossierUrl": "/data/dossiers/exp11.json"
+  },
+  {
+    "id": "12",
+    "number": "12",
+    "title": "Temperature Scaling Post-Hoc Calibration",
+    "shortTitle": "TEMPERATURE SCALING",
+    "chapterId": 4,
+    "chapterTitle": "Trust & Calibration",
+    "notebookFilename": "12_temperature_scaling.ipynb",
+    "headlineMetric": {
+      "label": "ECE (Pre \u2192 Post)",
+      "value": "0.2541% \u2192 0.3649%"
+    },
+    "subMetric": {
+      "label": "Production Decision",
+      "value": "T=1.0 Retained"
+    },
+    "keyQuestion": "Can a single learned temperature parameter T soften logits to reduce calibration error without altering classification accuracy?",
+    "keyTakeaway": "Negative experiment: Learned T=0.8691 left accuracy unchanged at 99.07%, but worsened ECE from 0.2541% to 0.3649% and MCE from 9.85% to 16.18%. Production decision: retain original model confidence (T=1.0).",
+    "isNegativeResult": true,
+    "verifiedMetrics": {
+      "Learned T": "0.8691",
+      "Accuracy": "99.07% (Unchanged)",
+      "ECE Delta": "0.2541% -> 0.3649% (Worse)",
+      "MCE Delta": "9.8517% -> 16.1778% (Worse)",
+      "Production Decision": "KEEP T=1.0 ORIGINAL"
+    },
+    "figureCount": 4,
+    "dossierUrl": "/data/dossiers/exp12.json"
+  },
+  {
+    "id": "13",
+    "number": "13",
+    "title": "Transfer Learning with Pretrained ResNet-18",
+    "shortTitle": "TRANSFER LEARNING",
+    "chapterId": 5,
+    "chapterTitle": "Transfer & Generalization",
+    "notebookFilename": "13_transfer_learning.ipynb",
+    "headlineMetric": {
+      "label": "Frozen Feature Acc",
+      "value": "64.59%"
+    },
+    "subMetric": {
+      "label": "Dataset",
+      "value": "CIFAR-10 (Natural Images)"
+    },
+    "keyQuestion": "Can visual representations learned on ImageNet (1.2M natural images) transfer effectively to classify diverse CIFAR-10 classes?",
+    "keyTakeaway": "Using frozen ImageNet weights with only a newly trained linear classification head reached 64.59% accuracy, demonstrating reusable cross-domain visual primitives.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Backbone": "ResNet-18 (ImageNet-1k)",
+      "Trainable Params": "5,130 (Head Only)",
+      "Frozen Params": "11,176,512",
+      "Accuracy": "64.59%"
+    },
+    "figureCount": 3,
+    "dossierUrl": "/data/dossiers/exp13.json"
+  },
+  {
+    "id": "14",
+    "number": "14",
+    "title": "Fine-Tuning Strategies (Layer4 vs Full Backbone)",
+    "shortTitle": "FINE-TUNING",
+    "chapterId": 5,
+    "chapterTitle": "Transfer & Generalization",
+    "notebookFilename": "14_fine_tuning.ipynb",
+    "headlineMetric": {
+      "label": "Full Fine-Tuning",
+      "value": "84.68% Best"
+    },
+    "subMetric": {
+      "label": "Progressive Tuning",
+      "value": "64.59% \u2192 77.67% \u2192 84.68%"
+    },
+    "keyQuestion": "How does selective fine-tuning of deep residual blocks (Layer 4) compare against full end-to-end backbone adaptation with a reduced learning rate?",
+    "keyTakeaway": "Progressively unfreezing and adapting the pretrained backbone systematically improved performance: Frozen achieved 64.59%, Layer4 reached 77.67%, and Full Fine-Tuning produced the best result at 84.68%.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Frozen ResNet": "64.59%",
+      "Layer4 + Head": "77.67%",
+      "Full Fine-Tuning": "84.68% (Best)",
+      "Optimal Strategy": "Full Backbone Adaptation"
+    },
+    "figureCount": 1,
+    "dossierUrl": "/data/dossiers/exp14.json"
+  },
+  {
+    "id": "15",
+    "number": "15",
+    "title": "Model Selection & Robustness Stress-Testing",
+    "shortTitle": "MODEL SELECTION & ROBUSTNESS",
+    "chapterId": 6,
+    "chapterTitle": "Production",
+    "notebookFilename": "15_model_selection_and_robustness.ipynb",
+    "headlineMetric": {
+      "label": "Winning Candidate",
+      "value": "Baseline CNN"
+    },
+    "subMetric": {
+      "label": "Stress Tests",
+      "value": "Gaussian Noise & Occlusion"
+    },
+    "keyQuestion": "Across all 14 evaluated models, which architecture achieves optimal Pareto efficiency across accuracy, latency, memory, and perturbation robustness?",
+    "keyTakeaway": "Baseline CNN proved superior: 99.07% accuracy, 1.69 MB file size, ~1 ms CPU latency, and consistent noise resilience without extra runtime complexity.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Selected Model": "Baseline CNN",
+      "Test Accuracy": "99.07%",
+      "Noise Resilience": "Superior to MLP",
+      "File Size": "1.69 MB",
+      "Production Status": "APPROVED"
+    },
+    "figureCount": 1,
+    "dossierUrl": "/data/dossiers/exp15.json"
+  },
+  {
+    "id": "16",
+    "number": "16",
+    "title": "Final AI Model Freeze & Integration",
+    "shortTitle": "MODEL FREEZE & INTEGRATION",
+    "chapterId": 6,
+    "chapterTitle": "Production",
+    "notebookFilename": "16_model_freeze_and_integration.ipynb",
+    "headlineMetric": {
+      "label": "Latency (P50)",
+      "value": "1.175 ms"
+    },
+    "subMetric": {
+      "label": "Latency (Mean / P99)",
+      "value": "1.077 ms / 1.992 ms"
+    },
+    "keyQuestion": "How do we freeze weights, verify cryptographic integrity, benchmark latency distributions, and export an immutable production engine?",
+    "keyTakeaway": "Model frozen to eval() state in models/cnn_mnist.pt (1.69 MB). Rigorous CPU latency profiling confirmed Mean 1.077 ms, P50 1.175 ms, P95 1.687 ms, and P99 1.992 ms.",
+    "isNegativeResult": false,
+    "verifiedMetrics": {
+      "Mean Latency": "1.077 ms",
+      "P50 Latency": "1.175 ms",
+      "P95 Latency": "1.687 ms",
+      "P99 Latency": "1.992 ms",
+      "Weights File": "models/cnn_mnist.pt",
+      "File Size": "1.69 MB",
+      "State": "FROZEN"
+    },
+    "figureCount": 0,
+    "dossierUrl": "/data/dossiers/exp16.json"
+  }
+]

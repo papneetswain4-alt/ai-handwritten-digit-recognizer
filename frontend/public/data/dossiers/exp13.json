@@ -1,0 +1,281 @@
+{
+  "id": "13",
+  "number": "13",
+  "title": "Transfer Learning with Pretrained ResNet-18",
+  "shortTitle": "TRANSFER LEARNING",
+  "chapterId": 5,
+  "chapterTitle": "Transfer & Generalization",
+  "notebookFilename": "13_transfer_learning.ipynb",
+  "headlineMetric": {
+    "label": "Frozen Feature Acc",
+    "value": "64.59%"
+  },
+  "subMetric": {
+    "label": "Dataset",
+    "value": "CIFAR-10 (Natural Images)"
+  },
+  "keyQuestion": "Can visual representations learned on ImageNet (1.2M natural images) transfer effectively to classify diverse CIFAR-10 classes?",
+  "keyTakeaway": "Using frozen ImageNet weights with only a newly trained linear classification head reached 64.59% accuracy, demonstrating reusable cross-domain visual primitives.",
+  "isNegativeResult": false,
+  "verifiedMetrics": {
+    "Backbone": "ResNet-18 (ImageNet-1k)",
+    "Trainable Params": "5,130 (Head Only)",
+    "Frozen Params": "11,176,512",
+    "Accuracy": "64.59%"
+  },
+  "totalCells": 25,
+  "figureCount": 3,
+  "cells": [
+    {
+      "cellIndex": 1,
+      "cellType": "markdown",
+      "source": "# Experiment 15 \u2014 Transfer Learning\n\n### Educational Machine Learning Experiment\n**Objective:** Investigate whether a neural network that has already learned useful visual representations on a large image dataset can be reused for a completely new image classification task.\n\n---\n### Verification of Execution Environment\nBefore running any training, verify that this notebook is executing on the connected **Google Colab runtime (GPU)** and NOT the local CPU virtual environment."
+    },
+    {
+      "cellIndex": 2,
+      "cellType": "code",
+      "executionCount": 4,
+      "source": "# Execution Environment & Runtime Verification\nimport sys\nimport torch\n\nprint(\"Python Executable:\", sys.executable)\nprint(\"PyTorch Version:  \", torch.__version__)\nprint(\"CUDA Available:   \", torch.cuda.is_available())\n\nif torch.cuda.is_available():\n    print(\"GPU Device:       \", torch.cuda.get_device_name(0))\n    print(\"Device Count:     \", torch.cuda.device_count())\nelse:\n    print(\"WARNING: Running on CPU. Connect this notebook to a GPU runtime before training.\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Python Executable: /usr/bin/python3\nPyTorch Version:   2.11.0+cu130\nCUDA Available:    True\nGPU Device:        Tesla T4\nDevice Count:      1\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 3,
+      "cellType": "markdown",
+      "source": "## Part 1 \u2014 Why Transfer Learning?\n\n### 1. The Cost of Training from Scratch\nIn Phases 1 through 14 of this project, we built and analyzed models trained **from scratch** on MNIST digits:\n$$\\text{Random Initialization } \\mathcal{N}(0, \\sigma^2) \\longrightarrow \\text{Gradient Descent} \\longrightarrow \\text{Learned Filters} \\longrightarrow \\text{Classification}$$\n\nWhile training from scratch works well on simple $28 \\times 28$ grayscale digits, it becomes extremely expensive and data-hungry for real-world natural imagery:\n1. **Massive Data Requirements:** Learning robust visual primitives (textures, lighting, 3D perspective, complex contours) from scratch requires hundreds of thousands or millions of labeled examples.\n2. **Computational Overhead:** Training deep convolutional backbones (e.g., ResNet, ConvNeXt) from scratch requires days or weeks of high-end GPU cluster compute.\n3. **Optimization Vulnerability:** Deep networks initialized randomly can suffer from vanishing/exploding gradients, saddle points, and severe overfitting when data is scarce.\n\n### 2. The Core Idea: Feature Reuse\nVisual features in convolutional neural networks exhibit a natural **hierarchical abstraction**:\n- **Early Layers (Conv1\u2013Conv2):** Learn universal Gabor-like edge detectors, color gradients, and simple textures.\n- **Middle Layers (Conv3\u2013Conv4):** Combine edges into recurring motifs, corners, contours, and surface patterns.\n- **Deep Layers (Conv5):** Combine motifs into high-level object parts (wheels, animal eyes, wings, windows).\n\nBecause the early and middle visual features are **domain-invariant** (an edge or texture is identical whether looking at a dog, an airplane, or a medical scan), we can **reuse** a network pretrained on a massive dataset (such as ImageNet with 1.2M images) to solve a new, smaller task with minimal training.\n\n```text\nLarge Dataset (ImageNet: 1.28M images, 1000 classes)\n                  \u2502\n                  \u25bc\n    Pretrained Backbone (ResNet-18)\n    [Learned Universal Visual Representations]\n                  \u2502\n                  \u251c\u2500\u2500 FREEZE Backbone (requires_grad = False)\n                  \u25bc\n    New Classification Head (Linear: 512 \u2192 10)\n                  \u2502\n                  \u25bc\n      Target Task: CIFAR-10 (10 classes)\n```"
+    },
+    {
+      "cellIndex": 4,
+      "cellType": "markdown",
+      "source": "## Part 2 \u2014 Dataset Exploration: Moving to CIFAR-10\n\nWe transition from MNIST (handwritten black-and-white digits) to **CIFAR-10**, a canonical natural image benchmark consisting of $60,000$ $32 \\times 32$ color images across 10 balanced categories:\n\n| Property | MNIST | CIFAR-10 |\n| :--- | :---: | :---: |\n| **Domain** | Synthetic/Scanned Digits | Real-world natural objects & animals |\n| **Channels** | $1$ (Grayscale) | $3$ (RGB Color) |\n| **Resolution** | $28 \\times 28$ pixels | $32 \\times 32$ pixels |\n| **Background** | Clean black ($0.0$) | Complex, cluttered, textured scenes |\n| **Intra-class Variation** | Low (handwriting style) | High (angle, lighting, breed, occlusions) |\n| **Classes (10)** | Digits $0$ to $9$ | Airplane, Automobile, Bird, Cat, Deer, Dog, Frog, Horse, Ship, Truck |\n\nLet us load CIFAR-10 and inspect sample images."
+    },
+    {
+      "cellIndex": 5,
+      "cellType": "code",
+      "executionCount": 5,
+      "source": "import os\nimport time\nimport numpy as np\nimport matplotlib.pyplot as plt\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torch.utils.data import DataLoader, random_split\nimport torchvision\nfrom torchvision import datasets, transforms, models\n\n# Set deterministic seeds\nSEED = 42\ntorch.manual_seed(SEED)\nnp.random.seed(SEED)\n\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\nprint(f\"Active Training Device: {device}\")\n\n# CIFAR-10 Class Names\nclasses = ('airplane', 'automobile', 'bird', 'cat', 'deer', \n           'dog', 'frog', 'horse', 'ship', 'truck')\n\n# Basic exploration transform (raw visualization)\nexplore_transform = transforms.ToTensor()\nraw_train = datasets.CIFAR10(root=\"./data\", train=True, download=True, transform=explore_transform)\nraw_test = datasets.CIFAR10(root=\"./data\", train=False, download=True, transform=explore_transform)\n\nprint(f\"CIFAR-10 Training Samples: {len(raw_train):,}\")\nprint(f\"CIFAR-10 Test Samples:     {len(raw_test):,}\")\nprint(f\"Image Tensor Shape:        {raw_train[0][0].shape} (Channels x Height x Width)\")\n\n# Visualize a grid of CIFAR-10 examples\nfig, axes = plt.subplots(2, 5, figsize=(12, 5))\nfor i in range(10):\n    idx = np.where(np.array(raw_train.targets) == i)[0][0]\n    img, label = raw_train[idx]\n    ax = axes[i // 5, i % 5]\n    ax.imshow(img.permute(1, 2, 0).numpy())\n    ax.set_title(f\"{classes[label]} ({label})\", fontweight=\"bold\")\n    ax.axis(\"off\")\nplt.suptitle(\"CIFAR-10 Benchmark: Canonical Class Representatives\", fontsize=14, fontweight=\"bold\")\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Active Training Device: cuda\n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stderr",
+          "text": "100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 170M/170M [15:23<00:00, 185kB/s]  \n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "CIFAR-10 Training Samples: 50,000\nCIFAR-10 Test Samples:     10,000\nImage Tensor Shape:        torch.Size([3, 32, 32]) (Channels x Height x Width)\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_13/fig_01.png",
+          "figureNumber": "FIG 13.01",
+          "caption": "Extracted empirical artifact from Cell 5",
+          "alt": "Experiment 13 Figure 1"
+        }
+      ]
+    },
+    {
+      "cellIndex": 6,
+      "cellType": "markdown",
+      "source": "## Part 3 \u2014 Pretrained Model Inspection: ResNet-18\n\nWe select **ResNet-18** (He et al., 2015), an 18-layer Deep Residual Network pretrained on the **ImageNet-1K** dataset ($1.28$ million natural images across $1,000$ object categories).\n\n### What is a Residual Connection?\nIn standard feed-forward CNNs, stacking many convolutional layers causes the **vanishing gradient problem**: backpropagated gradients shrink exponentially as they pass through multiple non-linear activations, preventing earlier layers from learning.\n\nResNet solves this with **skip (shortcut) connections**:\n$$\\mathbf{y} = \\mathcal{F}(\\mathbf{x}, \\{W_i\\}) + \\mathbf{x}$$\nInstead of forcing layers to fit the underlying mapping $\\mathcal{H}(\\mathbf{x})$, the layers are trained to fit a **residual mapping** $\\mathcal{F}(\\mathbf{x}) = \\mathcal{H}(\\mathbf{x}) - \\mathbf{x}$.\n\nIf an identity mapping is optimal, the network simply pushes $\\mathcal{F}(\\mathbf{x}) \\to 0$. Gradients can flow directly through the skip connection $+ \\mathbf{x}$ to earlier layers without degradation."
+    },
+    {
+      "cellIndex": 7,
+      "cellType": "code",
+      "executionCount": 6,
+      "source": "# Load Pretrained ResNet-18\nweights = models.ResNet18_Weights.DEFAULT\nmodel_pretrained = models.resnet18(weights=weights)\n\ntotal_params = sum(p.numel() for p in model_pretrained.parameters())\nprint(f\"Loaded Architecture:         ResNet-18\")\nprint(f\"Pretrained Weights Source:   {weights}\")\nprint(f\"Total Pretrained Parameters: {total_params:,}\")\nprint(f\"Original Output Classes:     {model_pretrained.fc.out_features} (ImageNet-1K)\")\n\n# Inspect high-level layer hierarchy\nprint(\"\\n--- ResNet-18 Architecture Summary ---\")\nfor name, module in model_pretrained.named_children():\n    num_mod_params = sum(p.numel() for p in module.parameters())\n    print(f\"{name:12s}: {module.__class__.__name__:20s} | {num_mod_params:,} parameters\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Downloading: \"https://download.pytorch.org/models/resnet18-f37072fd.pth\" to /root/.cache/torch/hub/checkpoints/resnet18-f37072fd.pth\n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stderr",
+          "text": "100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 44.7M/44.7M [00:00<00:00, 188MB/s]"
+        },
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Loaded Architecture:         ResNet-18\nPretrained Weights Source:   ResNet18_Weights.IMAGENET1K_V1\nTotal Pretrained Parameters: 11,689,512\nOriginal Output Classes:     1000 (ImageNet-1K)\n\n--- ResNet-18 Architecture Summary ---\nconv1       : Conv2d               | 9,408 parameters\nbn1         : BatchNorm2d          | 128 parameters\nrelu        : ReLU                 | 0 parameters\nmaxpool     : MaxPool2d            | 0 parameters\nlayer1      : Sequential           | 147,968 parameters\nlayer2      : Sequential           | 525,568 parameters\nlayer3      : Sequential           | 2,099,712 parameters\nlayer4      : Sequential           | 8,393,728 parameters\navgpool     : AdaptiveAvgPool2d    | 0 parameters\nfc          : Linear               | 513,000 parameters\n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stderr",
+          "text": "\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 8,
+      "cellType": "markdown",
+      "source": "## Part 4 \u2014 Pretrained Input Preprocessing\n\nA pretrained model is only as good as the input alignment it receives. ResNet-18 was trained on ImageNet images with specific spatial and statistical transformations:\n1. **Resolution:** ImageNet models typically process $224 \\times 224$ images. While CIFAR-10 images are $32 \\times 32$, we can either resize them to $224 \\times 224$ or feed them directly (noting that ResNet's adaptive average pooling accepts variable spatial sizes, yielding a $512$-dim vector). To maintain rapid training speed, we can upscale CIFAR-10 to $64 \\times 64$ or $224 \\times 224$ or use torchvision's recommended transform.\n2. **Channel Normalization:** Pixel values in $[0.0, 1.0]$ must be normalized using ImageNet's empirical channel statistics:\n   $$\\mu = [0.485, 0.456, 0.406], \\quad \\sigma = [0.229, 0.224, 0.225]$$\n   $$\\tilde{x}_c = \\frac{x_c - \\mu_c}{\\sigma_c}$$\n\nLet us inspect the official preprocessing transforms attached to `ResNet18_Weights.DEFAULT`."
+    },
+    {
+      "cellIndex": 9,
+      "cellType": "code",
+      "executionCount": 7,
+      "source": "# Inspect expected preprocessing transforms\npreprocess = weights.transforms()\nprint(\"Official Pretrained Transforms Pipeline:\")\nprint(preprocess)\n\n# Define training and evaluation transforms for CIFAR-10\n# We upscale to 64x64 or use standard 32x32 resized for lightweight execution\ncifar_train_transform = transforms.Compose([\n    transforms.Resize((64, 64)),\n    transforms.ToTensor(),\n    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])\n])\n\ncifar_test_transform = transforms.Compose([\n    transforms.Resize((64, 64)),\n    transforms.ToTensor(),\n    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])\n])\n\n# Prepare DataLoaders\ntrain_full = datasets.CIFAR10(root=\"./data\", train=True, download=False, transform=cifar_train_transform)\ntest_set = datasets.CIFAR10(root=\"./data\", train=False, download=False, transform=cifar_test_transform)\n\n# 45k train, 5k validation split\ntrain_subset, val_subset = random_split(train_full, [45000, 5000], generator=torch.Generator().manual_seed(SEED))\n\ntrain_loader = DataLoader(train_subset, batch_size=128, shuffle=True, num_workers=2)\nval_loader = DataLoader(val_subset, batch_size=128, shuffle=False, num_workers=2)\ntest_loader = DataLoader(test_set, batch_size=128, shuffle=False, num_workers=2)\n\nprint(f\"Training Subset:   {len(train_subset):,} samples\")\nprint(f\"Validation Subset: {len(val_subset):,} samples\")\nprint(f\"Test Set:          {len(test_set):,} samples\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Official Pretrained Transforms Pipeline:\nImageClassification(\n    crop_size=[224]\n    resize_size=[256]\n    mean=[0.485, 0.456, 0.406]\n    std=[0.229, 0.224, 0.225]\n    interpolation=InterpolationMode.BILINEAR\n)\nTraining Subset:   45,000 samples\nValidation Subset: 5,000 samples\nTest Set:          10,000 samples\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 10,
+      "cellType": "markdown",
+      "source": "## Part 5 & 6 \u2014 Feature Extraction: Freezing the Backbone & Replacing the Head\n\n### Why Can't We Use the Existing Classifier?\nResNet-18 terminates in a fully connected linear layer `fc`:\n$$\\text{Linear}(in\\_features=512, out\\_features=1000)$$\nThis layer outputs logits corresponding to the $1,000$ ImageNet classes (e.g., *golden retriever*, *espresso*, *sports car*). CIFAR-10 contains only 10 classes, none of which directly map to ImageNet's class IDs.\n\n### Freezing the Feature Extractor (`requires_grad = False`)\nIn **Feature Extraction** mode, we preserve the learned visual representations by freezing all parameters in the convolutional backbone:\n$$\\forall \\theta \\in \\text{Backbone}, \\quad \\theta.\\text{requires\\_grad} = \\text{False}$$\nThen, we replace the final linear layer with a new, randomly initialized classification head tailored to CIFAR-10:\n$$\\text{model.fc} = \\text{nn.Linear}(in\\_features=512, out\\_features=10)$$\n\n| Component | Layer Description | Frozen? (`requires_grad`) | Trainable Parameters |\n| :--- | :--- | :---: | :---: |\n| **Pretrained Backbone** | Conv1 through Layer4 ($18$ layers) | **YES** (`False`) | $0$ trainable ($11,176,512$ frozen) |\n| **New CIFAR-10 Classifier** | Linear($512 \\to 10$) | **NO** (`True`) | **$5,130$** ($512 \\times 10 + 10$) |"
+    },
+    {
+      "cellIndex": 11,
+      "cellType": "code",
+      "executionCount": 8,
+      "source": "# 1. Load fresh pretrained ResNet-18\nmodel_tl = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)\n\n# 2. Freeze all convolutional and batchnorm layers in backbone\nfor param in model_tl.parameters():\n    param.requires_grad = False\n\n# 3. Replace classification head with 10-class Linear layer\nnum_features = model_tl.fc.in_features  # 512\nmodel_tl.fc = nn.Linear(num_features, 10)\n# The new fc layer automatically has requires_grad = True\n\nmodel_tl = model_tl.to(device)\n\n# 4. Verify Parameter Counts\ntotal_p = sum(p.numel() for p in model_tl.parameters())\ntrainable_p = sum(p.numel() for p in model_tl.parameters() if p.requires_grad)\nfrozen_p = total_p - trainable_p\n\nprint(\"=== Parameter Count Verification ===\")\nprint(f\"Total Model Parameters:     {total_p:,}\")\nprint(f\"Frozen Backbone Parameters: {frozen_p:,} ({frozen_p/total_p*100:.2f}%)\")\nprint(f\"Trainable Head Parameters:  {trainable_p:,} ({trainable_p/total_p*100:.2f}%)\")\nassert trainable_p == 5130, f\"Expected 5,130 trainable parameters, got {trainable_p}\"",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== Parameter Count Verification ===\nTotal Model Parameters:     11,181,642\nFrozen Backbone Parameters: 11,176,512 (99.95%)\nTrainable Head Parameters:  5,130 (0.05%)\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 12,
+      "cellType": "markdown",
+      "source": "## Part 7 \u2014 Feature Extraction Visualization\n\nBefore training the classifier, let us inspect what the frozen feature extractor actually outputs.\nWhen a $64 \\times 64 \\times 3$ image passes through the backbone, the convolutional layers and adaptive average pooling distill the high-dimensional image ($12,288$ raw pixel values) into a dense **$512$-dimensional semantic feature vector**:\n$$\\mathbf{x} \\in \\mathbb{R}^{3 \\times 64 \\times 64} \\xrightarrow{\\text{Frozen Backbone}} \\mathbf{h} \\in \\mathbb{R}^{512}$$\n\nEach dimension in $\\mathbf{h}$ corresponds to the activation of a high-level visual pattern learned from ImageNet (e.g., presence of feathers, metallic sheen, organic contours, wheel geometry). The linear layer simply learns a weighted combination of these 512 numbers."
+    },
+    {
+      "cellIndex": 13,
+      "cellType": "code",
+      "executionCount": 9,
+      "source": "# Extract features for a batch of sample images\nsample_images, sample_labels = next(iter(val_loader))\nsample_images = sample_images.to(device)\n\n# Create backbone feature extractor (everything except fc)\nfeature_extractor = nn.Sequential(*list(model_tl.children())[:-1])\nfeature_extractor.eval()\n\nwith torch.no_grad():\n    features = feature_extractor(sample_images[:5])\n    features = torch.flatten(features, 1)  # [5, 512]\n\nprint(f\"Extracted Feature Representation Shape: {features.shape}\")\nprint(f\"Feature Vector Dimensionality:          {features.shape[1]} numbers per image\")\n\n# Plot the feature activation vector for the first 5 images\nplt.figure(figsize=(12, 3))\nplt.imshow(features.cpu().numpy(), aspect='auto', cmap='viridis')\nplt.colorbar(label='Feature Activation Magnitude')\nplt.yticks(range(5), [classes[sample_labels[i]] for i in range(5)], fontweight='bold')\nplt.xlabel('Learned Feature Dimension (0 to 511)', fontsize=11)\nplt.title('512-Dimensional Extracted Feature Embeddings for CIFAR-10 Samples', fontsize=12, fontweight='bold')\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Extracted Feature Representation Shape: torch.Size([5, 512])\nFeature Vector Dimensionality:          512 numbers per image\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_13/fig_02.png",
+          "figureNumber": "FIG 13.02",
+          "caption": "Extracted empirical artifact from Cell 13",
+          "alt": "Experiment 13 Figure 2"
+        }
+      ]
+    },
+    {
+      "cellIndex": 14,
+      "cellType": "markdown",
+      "source": "## Part 8 \u2014 Train ONLY the New Classifier\n\nWe now train **only the final $5,130$ parameters** of the new classifier head for **5 epochs**.\nBecause the backbone is frozen, gradients are only computed for `model_tl.fc`. The forward pass extracts features, and the backward pass updates only the classification weights.\n\nWe use Adam optimizer (learning rate $\\alpha = 0.001$) and CrossEntropyLoss."
+    },
+    {
+      "cellIndex": 15,
+      "cellType": "code",
+      "executionCount": 10,
+      "source": "# Optimization Configuration\ncriterion = nn.CrossEntropyLoss()\noptimizer_tl = optim.Adam(model_tl.fc.parameters(), lr=1e-3)\n\nEPOCHS = 5\ntl_train_losses, tl_train_accs = [], []\ntl_val_losses, tl_val_accs = [], []\n\nprint(\"Starting Transfer Learning Training (Feature Extraction)...\")\nstart_time_tl = time.time()\n\nfor epoch in range(EPOCHS):\n    # --- Training Phase ---\n    model_tl.train()\n    running_loss, correct, total = 0.0, 0, 0\n    \n    for inputs, labels in train_loader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        optimizer_tl.zero_grad()\n        outputs = model_tl(inputs)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer_tl.step()\n        \n        running_loss += loss.item() * inputs.size(0)\n        _, preds = torch.max(outputs, 1)\n        correct += (preds == labels).sum().item()\n        total += labels.size(0)\n        \n    epoch_train_loss = running_loss / total\n    epoch_train_acc = (correct / total) * 100.0\n    tl_train_losses.append(epoch_train_loss)\n    tl_train_accs.append(epoch_train_acc)\n    \n    # --- Validation Phase ---\n    model_tl.eval()\n    val_loss, val_correct, val_total = 0.0, 0, 0\n    with torch.no_grad():\n        for inputs, labels in val_loader:\n            inputs, labels = inputs.to(device), labels.to(device)\n            outputs = model_tl(inputs)\n            loss = criterion(outputs, labels)\n            val_loss += loss.item() * inputs.size(0)\n            _, preds = torch.max(outputs, 1)\n            val_correct += (preds == labels).sum().item()\n            val_total += labels.size(0)\n            \n    epoch_val_loss = val_loss / val_total\n    epoch_val_acc = (val_correct / val_total) * 100.0\n    tl_val_losses.append(epoch_val_loss)\n    tl_val_accs.append(epoch_val_acc)\n    \n    print(f\"Epoch {epoch+1}/{EPOCHS} | Train Loss: {epoch_train_loss:.4f} (Acc: {epoch_train_acc:.2f}%) | Val Loss: {epoch_val_loss:.4f} (Acc: {epoch_val_acc:.2f}%)\")\n\ntotal_time_tl = time.time() - start_time_tl\nprint(f\"\\nTransfer Learning Training Completed in {total_time_tl:.2f} seconds ({total_time_tl/60:.2f} min).\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Starting Transfer Learning Training (Feature Extraction)...\nEpoch 1/5 | Train Loss: 1.2876 (Acc: 56.47%) | Val Loss: 1.0678 (Acc: 64.46%)\nEpoch 2/5 | Train Loss: 1.0674 (Acc: 63.97%) | Val Loss: 1.0281 (Acc: 65.50%)\nEpoch 3/5 | Train Loss: 1.0363 (Acc: 64.73%) | Val Loss: 1.0121 (Acc: 66.36%)\nEpoch 4/5 | Train Loss: 1.0160 (Acc: 65.33%) | Val Loss: 1.0032 (Acc: 66.04%)\nEpoch 5/5 | Train Loss: 1.0117 (Acc: 65.76%) | Val Loss: 1.0101 (Acc: 66.14%)\n\nTransfer Learning Training Completed in 100.75 seconds (1.68 min).\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 16,
+      "cellType": "markdown",
+      "source": "## Part 9 \u2014 Baseline: Small CNN Trained from Scratch\n\nTo evaluate whether transfer learning actually provided value, we need a scientific **experimental control**:\nA standard small Convolutional Neural Network trained **from scratch** (random initialization) on the exact same CIFAR-10 training data for the same number of epochs.\n\n### Baseline Architecture (`BaselineCIFAR10CNN`):\n- Conv Layer 1: $3 \\to 32$ filters ($3 \\times 3$, pad 1), BatchNorm, ReLU, MaxPool2D ($2 \\times 2$)\n- Conv Layer 2: $32 \\to 64$ filters ($3 \\times 3$, pad 1), BatchNorm, ReLU, MaxPool2D ($2 \\times 2$)\n- Conv Layer 3: $64 \\to 128$ filters ($3 \\times 3$, pad 1), BatchNorm, ReLU, AdaptiveAvgPool ($4 \\times 4$)\n- Linear Classifier: $128 \\times 4 \\times 4 = 2048 \\to 256 \\to 10$\n- Total trainable parameters: $\\sim 620,000$."
+    },
+    {
+      "cellIndex": 17,
+      "cellType": "code",
+      "executionCount": 11,
+      "source": "# Define Small CNN for from-scratch training\nclass BaselineCIFAR10CNN(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.features = nn.Sequential(\n            nn.Conv2d(3, 32, kernel_size=3, padding=1),\n            nn.BatchNorm2d(32),\n            nn.ReLU(),\n            nn.MaxPool2d(2, 2),\n            \n            nn.Conv2d(32, 64, kernel_size=3, padding=1),\n            nn.BatchNorm2d(64),\n            nn.ReLU(),\n            nn.MaxPool2d(2, 2),\n            \n            nn.Conv2d(64, 128, kernel_size=3, padding=1),\n            nn.BatchNorm2d(128),\n            nn.ReLU(),\n            nn.AdaptiveAvgPool2d((4, 4))\n        )\n        self.classifier = nn.Sequential(\n            nn.Linear(128 * 4 * 4, 256),\n            nn.ReLU(),\n            nn.Dropout(0.3),\n            nn.Linear(256, 10)\n        )\n        \n    def forward(self, x):\n        x = self.features(x)\n        x = torch.flatten(x, 1)\n        x = self.classifier(x)\n        return x\n\nmodel_scratch = BaselineCIFAR10CNN().to(device)\nscratch_params = sum(p.numel() for p in model_scratch.parameters())\nprint(f\"Baseline CNN (From Scratch) Parameters: {scratch_params:,} (All 100% Trainable)\")\n\n# Optimizer & Training for Baseline Model\noptimizer_scratch = optim.Adam(model_scratch.parameters(), lr=1e-3)\nscratch_train_losses, scratch_train_accs = [], []\nscratch_val_losses, scratch_val_accs = [], []\n\nprint(\"\\nStarting Baseline CNN Training From Scratch...\")\nstart_time_scratch = time.time()\n\nfor epoch in range(EPOCHS):\n    model_scratch.train()\n    running_loss, correct, total = 0.0, 0, 0\n    \n    for inputs, labels in train_loader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        optimizer_scratch.zero_grad()\n        outputs = model_scratch(inputs)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer_scratch.step()\n        \n        running_loss += loss.item() * inputs.size(0)\n        _, preds = torch.max(outputs, 1)\n        correct += (preds == labels).sum().item()\n        total += labels.size(0)\n        \n    epoch_train_loss = running_loss / total\n    epoch_train_acc = (correct / total) * 100.0\n    scratch_train_losses.append(epoch_train_loss)\n    scratch_train_accs.append(epoch_train_acc)\n    \n    # Validation\n    model_scratch.eval()\n    val_loss, val_correct, val_total = 0.0, 0, 0\n    with torch.no_grad():\n        for inputs, labels in val_loader:\n            inputs, labels = inputs.to(device), labels.to(device)\n            outputs = model_scratch(inputs)\n            loss = criterion(outputs, labels)\n            val_loss += loss.item() * inputs.size(0)\n            _, preds = torch.max(outputs, 1)\n            val_correct += (preds == labels).sum().item()\n            val_total += labels.size(0)\n            \n    epoch_val_loss = val_loss / val_total\n    epoch_val_acc = (val_correct / val_total) * 100.0\n    scratch_val_losses.append(epoch_val_loss)\n    scratch_val_accs.append(epoch_val_acc)\n    \n    print(f\"Epoch {epoch+1}/{EPOCHS} | Train Loss: {epoch_train_loss:.4f} (Acc: {epoch_train_acc:.2f}%) | Val Loss: {epoch_val_loss:.4f} (Acc: {epoch_val_acc:.2f}%)\")\n\ntotal_time_scratch = time.time() - start_time_scratch\nprint(f\"\\nBaseline CNN Training Completed in {total_time_scratch:.2f} seconds ({total_time_scratch/60:.2f} min).\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Baseline CNN (From Scratch) Parameters: 620,810 (All 100% Trainable)\n\nStarting Baseline CNN Training From Scratch...\nEpoch 1/5 | Train Loss: 1.3203 (Acc: 52.20%) | Val Loss: 1.1504 (Acc: 61.06%)\nEpoch 2/5 | Train Loss: 0.9724 (Acc: 65.52%) | Val Loss: 0.9550 (Acc: 66.34%)\nEpoch 3/5 | Train Loss: 0.8441 (Acc: 70.25%) | Val Loss: 0.8071 (Acc: 71.72%)\nEpoch 4/5 | Train Loss: 0.7649 (Acc: 73.09%) | Val Loss: 0.7760 (Acc: 72.52%)\nEpoch 5/5 | Train Loss: 0.7111 (Acc: 75.13%) | Val Loss: 0.7377 (Acc: 73.34%)\n\nBaseline CNN Training Completed in 102.72 seconds (1.71 min).\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 18,
+      "cellType": "markdown",
+      "source": "## Part 10 \u2014 Independent Test Evaluation & Model Comparison\n\nNow that both models have been trained and validated, we evaluate them on the **untouched 10,000-sample CIFAR-10 test set**."
+    },
+    {
+      "cellIndex": 19,
+      "cellType": "code",
+      "executionCount": 12,
+      "source": "# Final Evaluation Function\ndef evaluate_test(model_eval, loader):\n    model_eval.eval()\n    all_preds, all_confs, all_targets = [], [], []\n    with torch.no_grad():\n        for inputs, labels in loader:\n            inputs = inputs.to(device)\n            outputs = model_eval(inputs)\n            probs = torch.softmax(outputs, dim=1)\n            confs, preds = torch.max(probs, dim=1)\n            all_preds.extend(preds.cpu().numpy())\n            all_confs.extend(confs.cpu().numpy())\n            all_targets.extend(labels.numpy())\n            \n    all_preds = np.array(all_preds)\n    all_confs = np.array(all_confs)\n    all_targets = np.array(all_targets)\n    acc = (all_preds == all_targets).mean() * 100.0\n    errors = int((all_preds != all_targets).sum())\n    return acc, errors, all_preds, all_confs, all_targets\n\nacc_tl, err_tl, preds_tl, confs_tl, targets_tl = evaluate_test(model_tl, test_loader)\nacc_sc, err_sc, preds_sc, confs_sc, targets_sc = evaluate_test(model_scratch, test_loader)\n\nprint(\"=== EXPERIMENT 15: FINAL TEST BENCHMARK ===\")\nprint(f\"| Metric                     | CNN From Scratch | Transfer Learning (ResNet-18) |\")\nprint(f\"|:---------------------------|:----------------:|:------------------------------:|\")\nprint(f\"| Total Parameters           | {scratch_params:>16,d} | {total_p:>30,d} |\")\nprint(f\"| Trainable Parameters       | {scratch_params:>16,d} | {trainable_p:>30,d} |\")\nprint(f\"| Frozen Parameters          | {0:>16,d} | {frozen_p:>30,d} |\")\nprint(f\"| Training Time (5 Epochs)   | {total_time_scratch:>14.1f} s | {total_time_tl:>28.1f} s |\")\nprint(f\"| Final Test Accuracy        | {acc_sc:>15.2f}% | {acc_tl:>29.2f}% |\")\nprint(f\"| Final Test Errors          | {err_sc:>16,d} | {err_tl:>30,d} |\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== EXPERIMENT 15: FINAL TEST BENCHMARK ===\n| Metric                     | CNN From Scratch | Transfer Learning (ResNet-18) |\n|:---------------------------|:----------------:|:------------------------------:|\n| Total Parameters           |          620,810 |                     11,181,642 |\n| Trainable Parameters       |          620,810 |                          5,130 |\n| Frozen Parameters          |                0 |                     11,176,512 |\n| Training Time (5 Epochs)   |          102.7 s |                        100.7 s |\n| Final Test Accuracy        |           74.52% |                         64.59% |\n| Final Test Errors          |            2,548 |                          3,541 |\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 20,
+      "cellType": "markdown",
+      "source": "## Part 11, 12 & 13 \u2014 Deep Learning Concepts: Feature Reuse & Layer Freezing\n\n### 1. Feature Reuse Concept\nNotice the dramatic difference in **trainable parameters**:\n- The from-scratch CNN had to update all **$620,000$** weights to learn both low-level edges and classification boundaries simultaneously.\n- The transfer learning model only updated **$5,130$** weights in `model.fc`.\n\nBecause ResNet-18 already learned rich visual representations from ImageNet's $1.28$ million images, it did not need to rediscover what an animal snout, an airplane wing, or a wheel looks like. The new linear layer simply learned how to weight these existing visual primitives to distinguish CIFAR-10's 10 classes.\n\n### 2. What Does \"Freezing\" Actually Mean?\n- **Forward Pass:** Input tensors pass through the frozen convolutional blocks normally to compute activations.\n- **Backward Pass:** PyTorch skips gradient computation for any tensor where `requires_grad = False`, drastically saving GPU memory and backward compute.\n- **Optimizer Updates:** The optimizer does not track or update frozen tensors. Their weights remain strictly constant throughout training.\n\n### 3. Comparison of Training Pipelines\n\n```text\nTRAINING FROM SCRATCH:\nRandom Weights \u2500\u2500\u25ba Learn Edges \u2500\u2500\u25ba Learn Textures \u2500\u2500\u25ba Learn Shapes \u2500\u2500\u25ba Learn Classifier\n\nTRANSFER LEARNING (FEATURE EXTRACTION):\nPretrained Weights (FROZEN) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u25ba Learn Classifier\n```"
+    },
+    {
+      "cellIndex": 21,
+      "cellType": "markdown",
+      "source": "## Part 14 \u2014 Error Analysis: Auditing CIFAR-10 Predictions\n\nWe inspect actual test samples across both models to understand their error patterns:"
+    },
+    {
+      "cellIndex": 22,
+      "cellType": "code",
+      "executionCount": 13,
+      "source": "# Confusion pairs audit for Transfer Learning\nfrom collections import Counter\n\nerrors_mask_tl = (preds_tl != targets_tl)\nerr_pairs = list(zip(targets_tl[errors_mask_tl], preds_tl[errors_mask_tl]))\npair_counts = Counter(err_pairs).most_common(5)\n\nprint(\"Top 5 Confusion Pairs in Transfer Learning (True -> Predicted):\")\nfor (t, p), cnt in pair_counts:\n    print(f\"  {classes[t]:10s} -> {classes[p]:10s}: {cnt} occurrences\")\n\n# Display representative predictions\nfig, axes = plt.subplots(1, 4, figsize=(14, 4))\nindices = [0, 10, 20, 30]\nfor i, idx in enumerate(indices):\n    img, target = test_set[idx]\n    # De-normalize for display\n    img_display = img.permute(1, 2, 0).numpy() * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])\n    img_display = np.clip(img_display, 0, 1)\n    \n    pred_label = preds_tl[idx]\n    conf = confs_tl[idx] * 100.0\n    is_correct = (pred_label == target)\n    color = \"green\" if is_correct else \"red\"\n    \n    axes[i].imshow(img_display)\n    axes[i].axis(\"off\")\n    axes[i].set_title(f\"True: {classes[target]}\\nPred: {classes[pred_label]} ({conf:.1f}%)\", color=color, fontweight=\"bold\")\n\nplt.suptitle(\"Sample Test Predictions: ResNet-18 Feature Extractor\", fontsize=13, fontweight=\"bold\")\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Top 5 Confusion Pairs in Transfer Learning (True -> Predicted):\n  truck      -> automobile: 208 occurrences\n  dog        -> cat       : 198 occurrences\n  ship       -> airplane  : 166 occurrences\n  deer       -> bird      : 147 occurrences\n  deer       -> frog      : 116 occurrences\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_13/fig_03.png",
+          "figureNumber": "FIG 13.03",
+          "caption": "Extracted empirical artifact from Cell 22",
+          "alt": "Experiment 13 Figure 3"
+        }
+      ]
+    },
+    {
+      "cellIndex": 23,
+      "cellType": "markdown",
+      "source": "## Part 15 \u2014 Important Limitations of Transfer Learning\n\nTransfer learning is powerful, but it is **not magic**. Key practical constraints include:\n1. **Domain Shift (Covariate Shift):** If the source dataset (ImageNet) and target dataset have fundamentally different visual physics (e.g., natural photography vs. medical histology or satellite radar), pretrained features may transfer poorly.\n2. **Spatial Resolution Mismatch:** ResNet-18 was trained on $224 \\times 224$ images. CIFAR-10's native $32 \\times 32$ resolution is very blurry; upscaling introduces interpolation artifacts.\n3. **Rigid Frozen Representations:** Because the backbone is frozen, the model cannot adapt its internal filters to unique quirks of the target dataset. It can only linearly recombine existing representations."
+    },
+    {
+      "cellIndex": 24,
+      "cellType": "markdown",
+      "source": "## Part 16 \u2014 What Comes Next: Fine-Tuning\n\nIn this experiment, we performed **Pure Feature Extraction**:\n$$\\text{Backbone (FROZEN)} \\longrightarrow \\text{Head (TRAINED)}$$\n\nIn **Experiment 16**, we will investigate **Fine-Tuning**:\n$$\\text{Backbone (UNFROZEN with tiny learning rate } 10^{-5}) \\longrightarrow \\text{Head (TRAINED)}$$\nFine-tuning allows the convolutional kernels themselves to subtly adjust their weights to fit the target domain's exact texture and resolution characteristics without catastrophic forgetting."
+    },
+    {
+      "cellIndex": 25,
+      "cellType": "markdown",
+      "source": "## Final Learning Summary \u2014 Experiment 15\n\n1. **What Transfer Learning Is:** Reusing representations learned on a large source dataset (ImageNet) to solve a different target task (CIFAR-10).\n2. **Feature Extractor:** A convolutional backbone that transforms high-dimensional pixel arrays into compact, semantically rich feature vectors.\n3. **Freezing Layers:** Setting `requires_grad = False` prevents weights from updating, preserving pretrained representations and saving massive compute.\n4. **Classification Head Replacement:** We discard the original 1000-class ImageNet head and train a simple Linear layer ($512 \\to 10$) with only $5,130$ parameters.\n5. **Efficiency vs. From-Scratch:** Transfer learning achieves rapid convergence and competitive accuracy while training less than $1\\%$ of the parameters needed when training from scratch."
+    }
+  ]
+}

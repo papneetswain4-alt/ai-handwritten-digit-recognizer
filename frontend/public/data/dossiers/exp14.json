@@ -1,0 +1,186 @@
+{
+  "id": "14",
+  "number": "14",
+  "title": "Fine-Tuning Strategies (Layer4 vs Full Backbone)",
+  "shortTitle": "FINE-TUNING",
+  "chapterId": 5,
+  "chapterTitle": "Transfer & Generalization",
+  "notebookFilename": "14_fine_tuning.ipynb",
+  "headlineMetric": {
+    "label": "Full Fine-Tuning",
+    "value": "84.68% Best"
+  },
+  "subMetric": {
+    "label": "Progressive Tuning",
+    "value": "64.59% \u2192 77.67% \u2192 84.68%"
+  },
+  "keyQuestion": "How does selective fine-tuning of deep residual blocks (Layer 4) compare against full end-to-end backbone adaptation with a reduced learning rate?",
+  "keyTakeaway": "Progressively unfreezing and adapting the pretrained backbone systematically improved performance: Frozen achieved 64.59%, Layer4 reached 77.67%, and Full Fine-Tuning produced the best result at 84.68%.",
+  "isNegativeResult": false,
+  "verifiedMetrics": {
+    "Frozen ResNet": "64.59%",
+    "Layer4 + Head": "77.67%",
+    "Full Fine-Tuning": "84.68% (Best)",
+    "Optimal Strategy": "Full Backbone Adaptation"
+  },
+  "totalCells": 17,
+  "figureCount": 1,
+  "cells": [
+    {
+      "cellIndex": 1,
+      "cellType": "markdown",
+      "source": "# Experiment 16 \u2014 Fine-Tuning\n\n### Educational Machine Learning Experiment\n**Objective:** Determine whether fine-tuning the pretrained ResNet-18 convolutional backbone improves substantially over the **64.59% accuracy** obtained from Experiment 15's frozen feature extractor, and whether it can approach or surpass the **74.52% from-scratch CNN baseline**.\n\n---\n### Execution Environment Verification\nBefore executing heavy fine-tuning, verify that this notebook is connected to the **Google Colab NVIDIA Tesla T4 GPU** runtime."
+    },
+    {
+      "cellIndex": 2,
+      "cellType": "code",
+      "executionCount": 2,
+      "source": "# Execution Environment & Runtime Verification\nimport sys\nimport torch\n\nprint(\"Python Executable:\", sys.executable)\nprint(\"PyTorch Version:  \", torch.__version__)\nprint(\"CUDA Available:   \", torch.cuda.is_available())\n\nif torch.cuda.is_available():\n    print(\"GPU Device:       \", torch.cuda.get_device_name(0))\n    print(\"Device Count:     \", torch.cuda.device_count())\n    print(\"Training Device:   NVIDIA Tesla T4 (Colab GPU)\")\nelse:\n    print(\"WARNING: Running on CPU. Connect this notebook to a GPU runtime before training.\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Python Executable: /usr/bin/python3\nPyTorch Version:   2.11.0+cu130\nCUDA Available:    True\nGPU Device:        Tesla T4\nDevice Count:      1\nTraining Device:   NVIDIA Tesla T4 (Colab GPU)\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 3,
+      "cellType": "markdown",
+      "source": "## Part 1 \u2014 Concepts: From Feature Extraction to Fine-Tuning\n\n### 1. What Did Experiment 15 Teach Us?\nIn Experiment 15, we evaluated **Pure Feature Extraction**:\n- Backbone was **100% frozen** ($11,176,512$ weights locked).\n- We trained only the final linear head ($5,130$ weights).\n- **Result:** $64.59\\%$ test accuracy in $100.75$ seconds.\n- **Comparison:** A small custom CNN trained 100% from scratch reached **$74.52\\%$** ($+9.93\\%$ higher).\n\n**Why did the from-scratch baseline win?**\nResNet-18 was trained on ImageNet's high-resolution $224 \\times 224$ images. In CIFAR-10, the images are small $32 \\times 32$ thumbnails (upscaled to $64 \\times 64$). Because the backbone was locked, its convolutional filters could **not** adapt to CIFAR-10's unique resolution, blurry textures, or spatial frequencies.\n\n### 2. What is Fine-Tuning?\n**Fine-Tuning** goes one step further: instead of keeping the pretrained backbone permanently frozen, we **unfreeze** some or all of the convolutional layers and train them with a **very small learning rate**:\n$$\\text{Pretrained Weights } W_{\\text{ImageNet}} \\xrightarrow{\\text{Small Gradients } \\alpha = 10^{-5}} W_{\\text{Adapted to CIFAR-10}}$$\n\n### 3. The Danger: Catastrophic Forgetting\nIf we train the pretrained backbone with a standard high learning rate (e.g., $10^{-2}$ or $10^{-3}$), the large initial gradients from the randomly initialized head will **shatter** the delicate feature representations learned on ImageNet. This phenomenon is called **Catastrophic Forgetting**.\n\nTo prevent this, we use **Discriminative Learning Rates**:\n- **Pretrained Backbone:** $\\alpha = 10^{-5}$ (tiny updates; gently adjusts filters to low resolution).\n- **New Classification Head:** $\\alpha = 10^{-3}$ (100x larger; learns classification boundaries quickly).\n\n### 4. Why Unfreeze `layer4` First?\n- `conv1`, `layer1`, `layer2`: Learn general low-level primitives (edges, color gradients) that are universally useful across all vision tasks.\n- `layer4` (8.39M parameters): Learns high-level semantic abstractions. Unfreezing `layer4` allows high-level feature maps to adapt directly to CIFAR-10 object categories while keeping early general filters stable."
+    },
+    {
+      "cellIndex": 4,
+      "cellType": "markdown",
+      "source": "## Part 2 \u2014 Dataset Setup (Identical to Experiment 15)\n\nWe load CIFAR-10 using the exact same deterministic partition ($45,000$ train, $5,000$ validation, $10,000$ test, random seed $42$) and identical ImageNet normalization transforms."
+    },
+    {
+      "cellIndex": 5,
+      "cellType": "code",
+      "executionCount": 3,
+      "source": "import time\nimport numpy as np\nimport matplotlib.pyplot as plt\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torch.utils.data import DataLoader, random_split\nfrom torchvision import datasets, transforms, models\n\n# Deterministic Seed\nSEED = 42\ntorch.manual_seed(SEED)\nnp.random.seed(SEED)\n\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\nprint(f\"Active Training Device: {device}\")\n\nclasses = ('airplane', 'automobile', 'bird', 'cat', 'deer', \n           'dog', 'frog', 'horse', 'ship', 'truck')\n\n# Identical Preprocessing Transforms\ncifar_transform = transforms.Compose([\n    transforms.Resize((64, 64)),\n    transforms.ToTensor(),\n    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])\n])\n\n# Load Datasets\ntrain_full = datasets.CIFAR10(root=\"./data\", train=True, download=True, transform=cifar_transform)\ntest_set = datasets.CIFAR10(root=\"./data\", train=False, download=True, transform=cifar_transform)\n\n# 45k / 5k split\ntrain_subset, val_subset = random_split(train_full, [45000, 5000], generator=torch.Generator().manual_seed(SEED))\n\ntrain_loader = DataLoader(train_subset, batch_size=128, shuffle=True, num_workers=2)\nval_loader = DataLoader(val_subset, batch_size=128, shuffle=False, num_workers=2)\ntest_loader = DataLoader(test_set, batch_size=128, shuffle=False, num_workers=2)\n\nprint(f\"CIFAR-10 Training Split:   {len(train_subset):,} samples\")\nprint(f\"CIFAR-10 Validation Split: {len(val_subset):,} samples\")\nprint(f\"CIFAR-10 Test Set:         {len(test_set):,} samples (Untouched until final evaluation)\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Active Training Device: cuda\nCIFAR-10 Training Split:   45,000 samples\nCIFAR-10 Validation Split: 5,000 samples\nCIFAR-10 Test Set:         10,000 samples (Untouched until final evaluation)\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 6,
+      "cellType": "markdown",
+      "source": "## Part 3 \u2014 Experiment A: Feature Extraction Reference (From Experiment 15)\n\nWe record the frozen-backbone baseline established in Experiment 15 as our benchmark reference point:\n- **Model:** ResNet-18 with 100% frozen backbone\n- **Trainable Parameters:** $5,130$ ($0.05\\%$)\n- **Frozen Parameters:** $11,176,512$ ($99.95\\%$)\n- **Training Time (5 Epochs):** $100.75$ seconds\n- **Validation Accuracy:** $66.14\\%$\n- **Final Test Accuracy:** **64.59%** ($6,459 / 10,000$ correct, $3,541$ errors)\n\nWe will compare both fine-tuning strategies directly against this reference."
+    },
+    {
+      "cellIndex": 7,
+      "cellType": "markdown",
+      "source": "## Part 4 \u2014 Experiment B: Fine-Tune `layer4` + Classifier Head\n\nIn this controlled experiment:\n1. We freeze `conv1`, `bn1`, `layer1`, `layer2`, and `layer3` ($2,782,784$ parameters).\n2. We **unfreeze `layer4`** ($8,393,728$ parameters).\n3. We keep the new classification head **`fc`** trainable ($5,130$ parameters).\n4. Total trainable parameters: **$8,398,858$** ($75.11\\%$ of the model).\n5. We use **discriminative learning rates**:\n   - `layer4` learning rate: $\\mathbf{1 \\times 10^{-5}}$\n   - `fc` head learning rate: $\\mathbf{1 \\times 10^{-3}}$\n6. We train for **5 epochs** using Adam and CrossEntropyLoss."
+    },
+    {
+      "cellIndex": 8,
+      "cellType": "code",
+      "executionCount": 4,
+      "source": "# Setup Model B: ResNet-18 with layer4 unfrozen\nmodel_b = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)\n\n# 1. Freeze everything first\nfor param in model_b.parameters():\n    param.requires_grad = False\n\n# 2. Unfreeze layer4\nfor param in model_b.layer4.parameters():\n    param.requires_grad = True\n\n# 3. Replace fc with 10-class linear layer\nmodel_b.fc = nn.Linear(512, 10)\n# model_b.fc parameters automatically have requires_grad = True\n\nmodel_b = model_b.to(device)\n\n# Parameter verification\ntotal_b = sum(p.numel() for p in model_b.parameters())\ntrainable_b = sum(p.numel() for p in model_b.parameters() if p.requires_grad)\nfrozen_b = total_b - trainable_b\n\nprint(\"=== Experiment B: Parameter Count Verification ===\")\nprint(f\"Total Parameters:     {total_b:,}\")\nprint(f\"Frozen Parameters:    {frozen_b:,} ({frozen_b/total_b*100:.2f}%)\")\nprint(f\"Trainable Parameters: {trainable_b:,} ({trainable_b/total_b*100:.2f}%)\")\n\n# Discriminative Optimizer Setup\noptimizer_b = optim.Adam([\n    {'params': model_b.layer4.parameters(), 'lr': 1e-5},\n    {'params': model_b.fc.parameters(), 'lr': 1e-3}\n])\ncriterion = nn.CrossEntropyLoss()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== Experiment B: Parameter Count Verification ===\nTotal Parameters:     11,181,642\nFrozen Parameters:    2,782,784 (24.89%)\nTrainable Parameters: 8,398,858 (75.11%)\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 9,
+      "cellType": "code",
+      "executionCount": 5,
+      "source": "# Train Model B (Layer4 + Head Fine-Tuning)\nEPOCHS = 5\nb_train_losses, b_train_accs = [], []\nb_val_losses, b_val_accs = [], []\n\nprint(\"Starting Experiment B Training (Fine-Tuning Layer4 + Head)...\")\nstart_time_b = time.time()\n\nfor epoch in range(EPOCHS):\n    model_b.train()\n    running_loss, correct, total = 0.0, 0, 0\n    epoch_start = time.time()\n    \n    for inputs, labels in train_loader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        optimizer_b.zero_grad()\n        outputs = model_b(inputs)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer_b.step()\n        \n        running_loss += loss.item() * inputs.size(0)\n        _, preds = torch.max(outputs, 1)\n        correct += (preds == labels).sum().item()\n        total += labels.size(0)\n        \n    epoch_train_loss = running_loss / total\n    epoch_train_acc = (correct / total) * 100.0\n    b_train_losses.append(epoch_train_loss)\n    b_train_accs.append(epoch_train_acc)\n    \n    # Validation\n    model_b.eval()\n    val_loss, val_correct, val_total = 0.0, 0, 0\n    with torch.no_grad():\n        for inputs, labels in val_loader:\n            inputs, labels = inputs.to(device), labels.to(device)\n            outputs = model_b(inputs)\n            loss = criterion(outputs, labels)\n            val_loss += loss.item() * inputs.size(0)\n            _, preds = torch.max(outputs, 1)\n            val_correct += (preds == labels).sum().item()\n            val_total += labels.size(0)\n            \n    epoch_val_loss = val_loss / val_total\n    epoch_val_acc = (val_correct / val_total) * 100.0\n    b_val_losses.append(epoch_val_loss)\n    b_val_accs.append(epoch_val_acc)\n    epoch_time = time.time() - epoch_start\n    \n    print(f\"Epoch {epoch+1}/{EPOCHS} [{epoch_time:.1f}s] | Train Loss: {epoch_train_loss:.4f} (Acc: {epoch_train_acc:.2f}%) | Val Loss: {epoch_val_loss:.4f} (Acc: {epoch_val_acc:.2f}%)\")\n\ntotal_time_b = time.time() - start_time_b\nprint(f\"\\nExperiment B Training Completed in {total_time_b:.2f} seconds ({total_time_b/60:.2f} min).\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Starting Experiment B Training (Fine-Tuning Layer4 + Head)...\nEpoch 1/5 [20.1s] | Train Loss: 1.1080 (Acc: 62.16%) | Val Loss: 0.8039 (Acc: 72.20%)\nEpoch 2/5 [21.2s] | Train Loss: 0.7252 (Acc: 74.87%) | Val Loss: 0.7135 (Acc: 75.18%)\nEpoch 3/5 [19.7s] | Train Loss: 0.5922 (Acc: 79.41%) | Val Loss: 0.6528 (Acc: 77.60%)\nEpoch 4/5 [20.7s] | Train Loss: 0.4897 (Acc: 82.92%) | Val Loss: 0.6360 (Acc: 78.84%)\nEpoch 5/5 [20.9s] | Train Loss: 0.4077 (Acc: 85.73%) | Val Loss: 0.6273 (Acc: 78.82%)\n\nExperiment B Training Completed in 102.58 seconds (1.71 min).\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 10,
+      "cellType": "markdown",
+      "source": "## Part 5 \u2014 Experiment C: Fine-Tune Entire ResNet-18 Backbone\n\nIn this controlled experiment:\n1. We **unfreeze all layers** across the entire ResNet-18 architecture ($11,181,642$ parameters trainable, $0$ frozen).\n2. We use discriminative learning rates:\n   - Entire backbone (`conv1` through `layer4`): $\\mathbf{1 \\times 10^{-5}}$\n   - Classifier head (`fc`): $\\mathbf{1 \\times 10^{-3}}$\n3. We train for **5 epochs** under the exact same optimization budget."
+    },
+    {
+      "cellIndex": 11,
+      "cellType": "code",
+      "executionCount": 6,
+      "source": "# Setup Model C: Full ResNet-18 fine-tuning\nmodel_c = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)\nmodel_c.fc = nn.Linear(512, 10)\n\n# Ensure all parameters have requires_grad = True\nfor param in model_c.parameters():\n    param.requires_grad = True\n\nmodel_c = model_c.to(device)\n\n# Parameter verification\ntotal_c = sum(p.numel() for p in model_c.parameters())\ntrainable_c = sum(p.numel() for p in model_c.parameters() if p.requires_grad)\nfrozen_c = total_c - trainable_c\n\nprint(\"=== Experiment C: Parameter Count Verification ===\")\nprint(f\"Total Parameters:     {total_c:,}\")\nprint(f\"Frozen Parameters:    {frozen_c:,} ({frozen_c/total_c*100:.2f}%)\")\nprint(f\"Trainable Parameters: {trainable_c:,} ({trainable_c/total_c*100:.2f}%)\")\n\n# Extract backbone parameters (everything except fc)\nbackbone_params = [p for n, p in model_c.named_parameters() if not n.startswith('fc')]\n\noptimizer_c = optim.Adam([\n    {'params': backbone_params, 'lr': 1e-5},\n    {'params': model_c.fc.parameters(), 'lr': 1e-3}\n])",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== Experiment C: Parameter Count Verification ===\nTotal Parameters:     11,181,642\nFrozen Parameters:    0 (0.00%)\nTrainable Parameters: 11,181,642 (100.00%)\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 12,
+      "cellType": "code",
+      "executionCount": 7,
+      "source": "# Train Model C (Full Backbone Fine-Tuning)\nc_train_losses, c_train_accs = [], []\nc_val_losses, c_val_accs = [], []\n\nprint(\"Starting Experiment C Training (Fine-Tuning Entire ResNet-18)...\")\nstart_time_c = time.time()\n\nfor epoch in range(EPOCHS):\n    model_c.train()\n    running_loss, correct, total = 0.0, 0, 0\n    epoch_start = time.time()\n    \n    for inputs, labels in train_loader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        optimizer_c.zero_grad()\n        outputs = model_c(inputs)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer_c.step()\n        \n        running_loss += loss.item() * inputs.size(0)\n        _, preds = torch.max(outputs, 1)\n        correct += (preds == labels).sum().item()\n        total += labels.size(0)\n        \n    epoch_train_loss = running_loss / total\n    epoch_train_acc = (correct / total) * 100.0\n    c_train_losses.append(epoch_train_loss)\n    c_train_accs.append(epoch_train_acc)\n    \n    # Validation\n    model_c.eval()\n    val_loss, val_correct, val_total = 0.0, 0, 0\n    with torch.no_grad():\n        for inputs, labels in val_loader:\n            inputs, labels = inputs.to(device), labels.to(device)\n            outputs = model_c(inputs)\n            loss = criterion(outputs, labels)\n            val_loss += loss.item() * inputs.size(0)\n            _, preds = torch.max(outputs, 1)\n            val_correct += (preds == labels).sum().item()\n            val_total += labels.size(0)\n            \n    epoch_val_loss = val_loss / val_total\n    epoch_val_acc = (val_correct / val_total) * 100.0\n    c_val_losses.append(epoch_val_loss)\n    c_val_accs.append(epoch_val_acc)\n    epoch_time = time.time() - epoch_start\n    \n    print(f\"Epoch {epoch+1}/{EPOCHS} [{epoch_time:.1f}s] | Train Loss: {epoch_train_loss:.4f} (Acc: {epoch_train_acc:.2f}%) | Val Loss: {epoch_val_loss:.4f} (Acc: {epoch_val_acc:.2f}%)\")\n\ntotal_time_c = time.time() - start_time_c\nprint(f\"\\nExperiment C Training Completed in {total_time_c:.2f} seconds ({total_time_c/60:.2f} min).\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Starting Experiment C Training (Fine-Tuning Entire ResNet-18)...\nEpoch 1/5 [23.1s] | Train Loss: 0.9702 (Acc: 66.86%) | Val Loss: 0.6029 (Acc: 79.22%)\nEpoch 2/5 [23.6s] | Train Loss: 0.5230 (Acc: 81.87%) | Val Loss: 0.4994 (Acc: 82.80%)\nEpoch 3/5 [23.8s] | Train Loss: 0.3808 (Acc: 86.67%) | Val Loss: 0.4618 (Acc: 84.48%)\nEpoch 4/5 [23.8s] | Train Loss: 0.2761 (Acc: 90.49%) | Val Loss: 0.4603 (Acc: 84.58%)\nEpoch 5/5 [23.7s] | Train Loss: 0.1981 (Acc: 93.20%) | Val Loss: 0.4664 (Acc: 85.06%)\n\nExperiment C Training Completed in 117.98 seconds (1.97 min).\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 13,
+      "cellType": "markdown",
+      "source": "## Part 6 \u2014 Final Test Set Evaluation & Complete Benchmark\n\nWe evaluate Model B and Model C on the **untouched 10,000-sample CIFAR-10 test set** and compare them directly against Experiment 15's frozen feature extractor and the from-scratch baseline."
+    },
+    {
+      "cellIndex": 14,
+      "cellType": "code",
+      "executionCount": 8,
+      "source": "# Final Evaluation Helper\ndef evaluate_test(model_eval, loader):\n    model_eval.eval()\n    all_preds, all_confs, all_targets = [], [], []\n    with torch.no_grad():\n        for inputs, labels in loader:\n            inputs = inputs.to(device)\n            outputs = model_eval(inputs)\n            probs = torch.softmax(outputs, dim=1)\n            confs, preds = torch.max(probs, dim=1)\n            all_preds.extend(preds.cpu().numpy())\n            all_confs.extend(confs.cpu().numpy())\n            all_targets.extend(labels.numpy())\n            \n    all_preds = np.array(all_preds)\n    all_confs = np.array(all_confs)\n    all_targets = np.array(all_targets)\n    acc = (all_preds == all_targets).mean() * 100.0\n    errors = int((all_preds != all_targets).sum())\n    return acc, errors, all_preds, all_confs, all_targets\n\nacc_b, err_b, preds_b, confs_b, targets_b = evaluate_test(model_b, test_loader)\nacc_c, err_c, preds_c, confs_c, targets_c = evaluate_test(model_c, test_loader)\n\n# Experiment 15 Reference Values\nacc_ref, err_ref, time_ref, params_ref = 64.59, 3541, 100.75, 5130\nacc_scratch, err_scratch, time_scratch, params_scratch = 74.52, 2548, 102.72, 620810\n\nprint(\"=== EXPERIMENT 16: COMPLETE BENCHMARK COMPARISON ===\")\nprint(f\"| Model Configuration               | Trainable Params | Training Time | Test Accuracy | Test Errors |\")\nprint(f\"|:-----------------------------------|-----------------:|--------------:|--------------:|------------:|\")\nprint(f\"| Exp 15 Frozen ResNet-18 (Ref)      | {params_ref:>16,d} | {time_ref:>11.2f}s | {acc_ref:>12.2f}% | {err_ref:>11,d} |\")\nprint(f\"| Exp 16 Fine-Tune Layer4 + Head     | {trainable_b:>16,d} | {total_time_b:>11.2f}s | {acc_b:>12.2f}% | {err_b:>11,d} |\")\nprint(f\"| Exp 16 Fine-Tune Entire ResNet-18  | {trainable_c:>16,d} | {total_time_c:>11.2f}s | {acc_c:>12.2f}% | {err_c:>11,d} |\")\nprint(f\"| Baseline CNN From Scratch          | {params_scratch:>16,d} | {time_scratch:>11.2f}s | {acc_scratch:>12.2f}% | {err_scratch:>11,d} |\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== EXPERIMENT 16: COMPLETE BENCHMARK COMPARISON ===\n| Model Configuration               | Trainable Params | Training Time | Test Accuracy | Test Errors |\n|:-----------------------------------|-----------------:|--------------:|--------------:|------------:|\n| Exp 15 Frozen ResNet-18 (Ref)      |            5,130 |      100.75s |        64.59% |       3,541 |\n| Exp 16 Fine-Tune Layer4 + Head     |        8,398,858 |      102.58s |        77.67% |       2,233 |\n| Exp 16 Fine-Tune Entire ResNet-18  |       11,181,642 |      117.98s |        84.68% |       1,532 |\n| Baseline CNN From Scratch          |          620,810 |      102.72s |        74.52% |       2,548 |\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 15,
+      "cellType": "markdown",
+      "source": "## Part 7 \u2014 Error Analysis & Confusion Pairs\n\nWe analyze the confusion patterns of the best fine-tuned model and compare how fine-tuning resolved specific error modes:"
+    },
+    {
+      "cellIndex": 16,
+      "cellType": "code",
+      "executionCount": 9,
+      "source": "from collections import Counter\n\n# Best fine-tuned model error audit\nbest_preds = preds_c if acc_c >= acc_b else preds_b\nbest_name = \"Model C (Full Fine-Tune)\" if acc_c >= acc_b else \"Model B (Layer4 Fine-Tune)\"\n\nerr_mask = (best_preds != targets_b)\nerr_pairs = list(zip(targets_b[err_mask], best_preds[err_mask]))\ntop_pairs = Counter(err_pairs).most_common(5)\n\nprint(f\"Top 5 Confusion Pairs for Best Fine-Tuned Model ({best_name}):\")\nfor (t, p), count in top_pairs:\n    print(f\"  {classes[t]:10s} -> {classes[p]:10s}: {count} occurrences\")\n\n# Plot training/validation progression across all models\nfig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))\nepochs_range = range(1, EPOCHS + 1)\n\nax1.plot(epochs_range, b_train_losses, 'b--', label='Model B (Layer4) Train Loss')\nax1.plot(epochs_range, b_val_losses, 'b-', label='Model B (Layer4) Val Loss')\nax1.plot(epochs_range, c_train_losses, 'g--', label='Model C (Full) Train Loss')\nax1.plot(epochs_range, c_val_losses, 'g-', label='Model C (Full) Val Loss')\nax1.set_title('Cross-Entropy Loss Progression', fontweight='bold')\nax1.set_xlabel('Epoch')\nax1.set_ylabel('Loss')\nax1.grid(True, linestyle=':', alpha=0.6)\nax1.legend()\n\nax2.plot(epochs_range, b_val_accs, 'b-o', label='Model B (Layer4) Val Acc')\nax2.plot(epochs_range, c_val_accs, 'g-s', label='Model C (Full) Val Acc')\nax2.axhline(64.59, color='red', linestyle=':', label='Exp 15 Frozen ResNet-18 (64.59%)')\nax2.axhline(74.52, color='orange', linestyle=':', label='Baseline From Scratch (74.52%)')\nax2.set_title('Validation Accuracy Progression', fontweight='bold')\nax2.set_xlabel('Epoch')\nax2.set_ylabel('Accuracy (%)')\nax2.grid(True, linestyle=':', alpha=0.6)\nax2.legend()\n\nplt.suptitle('Experiment 16: Fine-Tuning Convergence & Performance Comparison', fontsize=13, fontweight='bold')\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Top 5 Confusion Pairs for Best Fine-Tuned Model (Model C (Full Fine-Tune)):\n  dog        -> cat       : 169 occurrences\n  cat        -> dog       : 89 occurrences\n  truck      -> automobile: 67 occurrences\n  ship       -> airplane  : 56 occurrences\n  bird       -> deer      : 51 occurrences\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_14/fig_01.png",
+          "figureNumber": "FIG 14.01",
+          "caption": "Extracted empirical artifact from Cell 16",
+          "alt": "Experiment 14 Figure 1"
+        }
+      ]
+    },
+    {
+      "cellIndex": 17,
+      "cellType": "markdown",
+      "source": "## Final Learning Summary \u2014 Experiment 16\n\n1. **Why Fine-Tuning Improves Over Pure Feature Extraction:**\n   Pure feature extraction is constrained by a rigid, locked backbone that cannot adapt to CIFAR-10's small $32 \\times 32$ resolution. Fine-tuning allows the convolutional kernels to subtly reshape their spatial receptive fields to match target domain statistics.\n2. **Discriminative Learning Rates Protect Pretrained Knowledge:**\n   By applying $\\alpha_{\\text{backbone}} = 10^{-5}$ alongside $\\alpha_{\\text{head}} = 10^{-3}$, we prevent catastrophic forgetting while allowing the new classifier to train quickly.\n3. **Layer4 vs. Full Backbone:**\n   Fine-tuning `layer4` captures most of the adaptation benefits because high-level semantic filters are where domain specialization occurs, while keeping earlier universal edge/texture detectors stable.\n4. **Surpassing the From-Scratch Baseline:**\n   Fine-tuning bridges the resolution gap, demonstrating the true power of transfer learning: combining broad visual knowledge from ImageNet with targeted adaptation to CIFAR-10."
+    }
+  ]
+}

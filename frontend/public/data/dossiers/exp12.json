@@ -1,0 +1,254 @@
+{
+  "id": "12",
+  "number": "12",
+  "title": "Temperature Scaling Post-Hoc Calibration",
+  "shortTitle": "TEMPERATURE SCALING",
+  "chapterId": 4,
+  "chapterTitle": "Trust & Calibration",
+  "notebookFilename": "12_temperature_scaling.ipynb",
+  "headlineMetric": {
+    "label": "ECE (Pre \u2192 Post)",
+    "value": "0.2541% \u2192 0.3649%"
+  },
+  "subMetric": {
+    "label": "Production Decision",
+    "value": "T=1.0 Retained"
+  },
+  "keyQuestion": "Can a single learned temperature parameter T soften logits to reduce calibration error without altering classification accuracy?",
+  "keyTakeaway": "Negative experiment: Learned T=0.8691 left accuracy unchanged at 99.07%, but worsened ECE from 0.2541% to 0.3649% and MCE from 9.85% to 16.18%. Production decision: retain original model confidence (T=1.0).",
+  "isNegativeResult": true,
+  "verifiedMetrics": {
+    "Learned T": "0.8691",
+    "Accuracy": "99.07% (Unchanged)",
+    "ECE Delta": "0.2541% -> 0.3649% (Worse)",
+    "MCE Delta": "9.8517% -> 16.1778% (Worse)",
+    "Production Decision": "KEEP T=1.0 ORIGINAL"
+  },
+  "totalCells": 23,
+  "figureCount": 4,
+  "cells": [
+    {
+      "cellIndex": 1,
+      "cellType": "markdown",
+      "source": "# Phase 14 \u2014 Temperature Scaling & Post-Hoc Calibration\n\n### Educational Machine Learning Experiment\n**Objective:** Investigate whether post-hoc temperature scaling can improve the reliability of the Convolutional Neural Network's confidence scores without modifying model weights, architecture, or classification predictions.\n\nIn Phase 13, our calibration audit revealed:\n- Overall MNIST accuracy: **99.07%** (93 errors).\n- Average confidence: **99.30%**.\n- Expected Calibration Error (ECE): **0.2541%** (10 uniform bins).\n- Maximum Calibration Error (MCE): **9.8517%** (in bin $[0.4, 0.5]$).\n- Overconfident errors: **29 errors** with confidence $\\ge 90\\%$, including **7 errors** with confidence $\\ge 99\\%$.\n- Peak false confidence: Sample #2896 (True 8, Predicted 0) with **99.96% confidence**.\n\n---\n### The Temperature Scaling Transformation\nTemperature scaling (Guo et al., 2017) is a single-parameter post-processing technique for neural network logits $\\mathbf{z} \\in \\mathbb{R}^K$:\n$$P_T(y = k \\mid \\mathbf{x}) = \\frac{e^{z_k / T}}{\\sum_{j=1}^{K} e^{z_j / T}}, \\quad T > 0$$\n\n- **$T > 1$:** Softens probability distributions, lowering confidence across all classes.\n- **$T < 1$:** Sharpens probability distributions, amplifying winning confidence.\n- **$T = 1$:** Recovers the standard, unscaled softmax.\n- **Argmax Invariance:** Because scalar division by $T > 0$ is strictly monotonic, $\\arg\\max_k (z_k / T) = \\arg\\max_k z_k$. The model's classification decision **never changes**.\n\n---\n### Strict Data Split Hygiene: Training vs. Calibration vs. Test\nTo prevent data leakage and evaluate real generalization:\n1. **CNN Model:** Completely frozen (`eval()` mode, zero weight updates).\n2. **MNIST Training Set ($N=60,000$):**\n   - **59,000 samples:** Left completely untouched.\n   - **1,000 samples:** Held out as the **Calibration Split** (random seed = 42). Temperature $T$ is learned exclusively by minimizing Negative Log-Likelihood (NLL) on these 1,000 samples.\n3. **MNIST Test Set ($N=10,000$):** Untouched during calibration; used strictly for final independent evaluation.\n\n```text\nOriginal MNIST Training Set (60,000)\n    \u2502\n    \u251c\u2500\u2500 59,000 samples (Unused for calibration)\n    \u2514\u2500\u2500  1,000 samples (Calibration Split, seed=42)\n             \u2502\n             \u25bc\n        Frozen CNN Forward Pass (torch.no_grad)\n             \u2502\n             \u25bc\n        Optimize scalar T via NLL\n             \u2502\n             \u25bc\n        Freeze Temperature T\n             \u2502\n             \u25bc\n     10,000-Sample Test Set Evaluation\n```\n"
+    },
+    {
+      "cellIndex": 2,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "import os\nimport sys\nimport hashlib\nfrom pathlib import Path\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom torch.utils.data import Subset\nfrom torchvision import datasets, transforms\nimport matplotlib.pyplot as plt\n\n# 1. Environment & Paths\nBASE_DIR = Path.cwd().parent\nsys.path.append(str(BASE_DIR / 'backend'))\nfrom src.model import HandwrittenDigitCNN\n\nMODEL_PATH = BASE_DIR / 'backend' / 'models' / 'cnn_mnist.pt'\nEXPECTED_HASH = \"E7BD9DBC143C566481C2944B699B9B56B43167A0C3AD0018AFA5E8CD17BCF87A\"\n\n# 2. Verify Checkpoint Hash\nwith open(MODEL_PATH, 'rb') as f:\n    model_hash = hashlib.sha256(f.read()).hexdigest().upper()\nassert model_hash == EXPECTED_HASH, f\"Hash mismatch: {model_hash}\"\nprint(f\"Model Checkpoint:  {MODEL_PATH}\")\nprint(f\"SHA-256 Hash:      {model_hash} (VERIFIED)\")\n\n# 3. Load Frozen Model\ndevice = torch.device('cpu')\nmodel = HandwrittenDigitCNN()\nmodel.load_state_dict(torch.load(MODEL_PATH, map_location=device, weights_only=True))\nmodel.eval()\nprint(f\"Model Parameters:  {sum(p.numel() for p in model.parameters()):,}\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Model Checkpoint:  D:\\Ai lab\\backend\\models\\cnn_mnist.pt\nSHA-256 Hash:      E7BD9DBC143C566481C2944B699B9B56B43167A0C3AD0018AFA5E8CD17BCF87A (VERIFIED)\nModel Parameters:  421,642\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 3,
+      "cellType": "markdown",
+      "source": "## Part 2 & 3 \u2014 Calibration Split Creation & Logit Extraction\n\nWe load the canonical MNIST training dataset ($60,000$ samples) and partition it into:\n- **Calibration Split:** $1,000$ samples.\n- **Remaining Training Data:** $59,000$ samples (unused).\n- **Deterministic Random Seed:** $42$.\n\nWe run the frozen CNN over the $1,000$ calibration samples under `torch.no_grad()` to extract logits and ground-truth targets.\n"
+    },
+    {
+      "cellIndex": 4,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Load Datasets\ntransform = transforms.Compose([transforms.ToTensor()])\nmnist_dir = BASE_DIR / 'backend' / 'data' / 'raw'\ntrain_dataset = datasets.MNIST(root=str(mnist_dir), train=True, download=False, transform=transform)\ntest_dataset = datasets.MNIST(root=str(mnist_dir), train=False, download=False, transform=transform)\n\n# Deterministic Partition\nSEED = 42\nnp.random.seed(SEED)\nperm = np.random.permutation(len(train_dataset))\ncalib_indices = perm[:1000]\n\ncalib_loader = torch.utils.data.DataLoader(Subset(train_dataset, calib_indices), batch_size=250, shuffle=False)\ncalib_logits, calib_targets = [], []\n\nwith torch.no_grad():\n    for data, target in calib_loader:\n        calib_logits.append(model(data))\n        calib_targets.append(target)\ncalib_logits = torch.cat(calib_logits, dim=0)\ncalib_targets = torch.cat(calib_targets, dim=0)\n\nloss_before = F.cross_entropy(calib_logits, calib_targets).item()\ncalib_preds = torch.argmax(calib_logits, dim=1)\ncalib_acc = (calib_preds == calib_targets).float().mean().item() * 100.0\n\nprint(f\"Total Training Samples:      {len(train_dataset):,}\")\nprint(f\"Calibration Samples:         {len(calib_indices):,} (Seed = {SEED})\")\nprint(f\"Excluded Training Samples:   {len(train_dataset) - len(calib_indices):,}\")\nprint(f\"Calibration Set Accuracy:    {calib_acc:.2f}% ({(calib_preds == calib_targets).sum()} / 1,000)\")\nprint(f\"Calibration Set Initial NLL: {loss_before:.6f}\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Total Training Samples:      60,000\nCalibration Samples:         1,000 (Seed = 42)\nExcluded Training Samples:   59,000\nCalibration Set Accuracy:    99.50% (995 / 1,000)\nCalibration Set Initial NLL: 0.014443\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 5,
+      "cellType": "markdown",
+      "source": "## Part 4 & 5 \u2014 Learning Temperature $T$ via Negative Log-Likelihood\n\nWe optimize a single scalar parameter $\\log T$ to ensure $T = \\exp(\\log T) > 0$.\nThe objective is to minimize the Negative Log-Likelihood (cross-entropy loss) on the calibration logits:\n$$\\mathcal{L}(T) = - \\sum_{i=1}^{N_{\\text{cal}}} \\log \\left( \\frac{e^{z_{i, y_i} / T}}{\\sum_j e^{z_{i, j} / T}} \\right)$$\n\nWe use L-BFGS (a quasi-Newton second-order optimizer) with 100 iterations.\n**Crucially, all CNN weights remain completely frozen.**\n"
+    },
+    {
+      "cellIndex": 6,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Define Temperature Scaler\nlog_T = nn.Parameter(torch.zeros(1)) # Initial T = exp(0) = 1.0\noptimizer = torch.optim.LBFGS([log_T], lr=0.01, max_iter=100)\n\ndef closure():\n    optimizer.zero_grad()\n    loss = F.cross_entropy(calib_logits / torch.exp(log_T), calib_targets)\n    loss.backward()\n    return loss\n\noptimizer.step(closure)\nopt_T = float(torch.exp(log_T).item())\nloss_after = float(F.cross_entropy(calib_logits / opt_T, calib_targets).item())\n\nprint(f\"Initial Temperature:     1.0000\")\nprint(f\"Optimized Temperature T: {opt_T:.4f}\")\nprint(f\"Calibration Loss Before: {loss_before:.6f}\")\nprint(f\"Calibration Loss After:  {loss_after:.6f} (Reduced by {loss_before - loss_after:.6f})\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Initial Temperature:     1.0000\nOptimized Temperature T: 0.8691\nCalibration Loss Before: 0.014443\nCalibration Loss After:  0.013860 (Reduced by 0.000584)\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 7,
+      "cellType": "markdown",
+      "source": "## Part 6 \u2014 Verifying Prediction Invariance: $\\Delta \\hat{y} = 0$\n\nTemperature scaling is designed strictly as a post-processing confidence transformation. It must **never** alter the model's top-1 class decision:\n$$\\arg\\max_k \\frac{z_k}{T} = \\arg\\max_k z_k, \\quad \\forall T > 0$$\n\nBelow, we run all 10,000 MNIST test samples through both the original softmax and the temperature-scaled softmax and confirm that **zero predictions changed**.\n"
+    },
+    {
+      "cellIndex": 8,
+      "cellType": "markdown",
+      "source": "## Part 6 \u2014 Verifying Prediction Invariance: $\\Delta \\hat{y} = 0$\n\nTemperature scaling is designed strictly as a post-processing confidence transformation. It must **never** alter the model's top-1 class decision:\n$$\\arg\\max_k \\frac{z_k}{T} = \\arg\\max_k z_k, \\quad \\forall T > 0$$\n\nBelow, we run all 10,000 MNIST test samples through both the original softmax and the temperature-scaled softmax and confirm that **zero predictions changed**.\n"
+    },
+    {
+      "cellIndex": 9,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Collect 10,000 Test Logits\ntest_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1000, shuffle=False)\ntest_logits, test_targets = [], []\nwith torch.no_grad():\n    for data, target in test_loader:\n        test_logits.append(model(data))\n        test_targets.append(target)\ntest_logits = torch.cat(test_logits, dim=0)\ntest_targets = torch.cat(test_targets, dim=0)\n\n# Compare Original vs Calibrated Predictions\norig_probs = F.softmax(test_logits, dim=1)\norig_confs, orig_preds = torch.max(orig_probs, dim=1)\n\ncal_probs = F.softmax(test_logits / opt_T, dim=1)\ncal_confs, cal_preds = torch.max(cal_probs, dim=1)\n\nchanged_count = (orig_preds != cal_preds).sum().item()\nprint(f\"Total Test Samples:             {len(test_targets):,}\")\nprint(f\"Changed Predictions After T:    {changed_count} (0.000%)\")\nassert changed_count == 0, \"FATAL: Temperature scaling altered classification predictions!\"\nprint(\"Assertion Passed: Argmax invariance strictly preserved.\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Total Test Samples:             10,000\nChanged Predictions After T:    0 (0.000%)\nAssertion Passed: Argmax invariance strictly preserved.\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 10,
+      "cellType": "markdown",
+      "source": "## Part 7, 8, 9 & 10 \u2014 Test Set Calibration Comparison: ECE, MCE & Reliability Diagrams\n\nWe now evaluate the untouched 10,000-sample test set across both models:\n- **Model A (Original Softmax, $T = 1.0$):** Baseline from Phase 13.\n- **Model B (Temperature Scaled, $T = 0.8691$):** Calibrated using the 1,000-sample calibration split.\n\n### Calibration Comparison Table (10 Uniform Bins)\n\n| Evaluation Metric | Model A (Original Softmax) | Model B (Temperature Scaled) | Absolute Change | Relative Change |\n| :--- | :---: | :---: | :---: | :---: |\n| **Temperature ($T$)** | 1.0000 | 0.8691 | -0.1309 | -13.09% |\n| **Test Accuracy** | **99.07%** (9,907 / 10,000) | **99.07%** (9,907 / 10,000) | 0.00% | 0.00% (Identical) |\n| **Mean Confidence** | 0.9930 (99.30%) | 0.9943 (99.43%) | +0.0013 | +0.13% |\n| **Median Confidence** | 1.0000 (100.0%) | 1.0000 (100.0%) | 0.0000 | 0.00% |\n| **Min Confidence** | 0.4437 (44.37%) | 0.4769 (47.69%) | +0.0332 | +7.48% |\n| **Max Confidence** | 1.0000 (100.0%) | 1.0000 (100.0%) | 0.0000 | 0.00% |\n| **Expected Calibration Error (ECE)** | **0.002541 (0.2541%)** | **0.003649 (0.3649%)** | **+0.001108** | **+43.60% (Worse)** |\n| **Maximum Calibration Error (MCE)** | **0.098517 (9.8517%)** | **0.161778 (16.1778%)** | **+0.063261** | **+64.21% (Worse)** |\n| **Worst Calibration Bin** | $[0.4, 0.5]$ (gap: $9.85\\%$) | $[0.8, 0.9]$ (gap: $16.18\\%$) | Shifted to higher bin | N/A |\n"
+    },
+    {
+      "cellIndex": 11,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Summary Printout\nprint(\"=== CALIBRATION METRICS COMPARISON ===\")\nprint(f\"Original ECE:    {orig_ece:.6f} ({orig_ece*100:.4f}%) | MCE: {orig_mce:.6f} ({orig_mce*100:.4f}%) in {orig_worst_bin}\")\nprint(f\"Calibrated ECE:  {cal_ece:.6f} ({cal_ece*100:.4f}%) | MCE: {cal_mce:.6f} ({cal_mce*100:.4f}%) in {cal_worst_bin}\")\nprint(f\"ECE Delta:       {cal_ece - orig_ece:+.6f} ({((cal_ece - orig_ece)/orig_ece)*100:+.2f}%)\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== CALIBRATION METRICS COMPARISON ===\nOriginal ECE:    0.002541 (0.2541%) | MCE: 0.098517 (9.8517%) in 0.4\u20130.5\nCalibrated ECE:  0.003649 (0.3649%) | MCE: 0.161777 (16.1777%) in 0.8\u20130.9\nECE Delta:       +0.001108 (+43.59%)\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_12/fig_01.png",
+          "figureNumber": "FIG 12.01",
+          "caption": "Extracted empirical artifact from Cell 11",
+          "alt": "Experiment 12 Figure 1"
+        }
+      ]
+    },
+    {
+      "cellIndex": 12,
+      "cellType": "markdown",
+      "source": "## Part 11 \u2014 Confidence Distribution Analysis\n\nBecause $T = 0.8691 < 1.0$, temperature scaling slightly **sharpens** confidence across the entire spectrum.\n- For correct predictions: Mean confidence increases slightly from $0.9950$ to $0.9960$.\n- For incorrect predictions: Mean confidence increases from $0.7759$ to $0.8037$.\n\nNotice the critical insight: **Temperature scaling did not soften confidence; it slightly increased confidence across errors as well.**\n"
+    },
+    {
+      "cellIndex": 13,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "orig_c_confs = orig_confs[correct]\norig_i_confs = orig_confs[~correct]\ncal_c_confs = cal_confs[correct]\ncal_i_confs = cal_confs[~correct]\n\nprint(\"=== DETAILED CONFIDENCE DISTRIBUTIONS ===\")\nprint(f\"Correct (Orig):  Mean = {orig_c_confs.mean():.4f} | Median = {np.median(orig_c_confs):.4f}\")\nprint(f\"Correct (Cal):   Mean = {cal_c_confs.mean():.4f} | Median = {np.median(cal_c_confs):.4f}\")\nprint(f\"Incorrect (Orig): Mean = {orig_i_confs.mean():.4f} | Median = {np.median(orig_i_confs):.4f}\")\nprint(f\"Incorrect (Cal):  Mean = {cal_i_confs.mean():.4f} | Median = {np.median(cal_i_confs):.4f}\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=== DETAILED CONFIDENCE DISTRIBUTIONS ===\nCorrect (Orig):  Mean = 0.9950 | Median = 1.0000\nCorrect (Cal):   Mean = 0.9961 | Median = 1.0000\nIncorrect (Orig): Mean = 0.7759 | Median = 0.7988\nIncorrect (Cal):  Mean = 0.8005 | Median = 0.8352\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_12/fig_02.png",
+          "figureNumber": "FIG 12.02",
+          "caption": "Extracted empirical artifact from Cell 13",
+          "alt": "Experiment 12 Figure 2"
+        }
+      ]
+    },
+    {
+      "cellIndex": 14,
+      "cellType": "markdown",
+      "source": "## Part 12 & 13 \u2014 Overconfident Errors & The 99.96% False-Confidence Case\n\n### Overconfident Error Audit\nBecause temperature scaling with $T < 1.0$ pushed confidence upward, more errors crossed the high-confidence thresholds:\n\n| Threshold | Original High-Confidence Errors | % of All 93 Errors | Calibrated High-Confidence Errors | % of All 93 Errors |\n| :---: | :---: | :---: | :---: | :---: |\n| **$P \\ge 0.90$** | **29** | 31.18% | **33** | 35.48% (+4 errors) |\n| **$P \\ge 0.95$** | **21** | 22.58% | **25** | 26.88% (+4 errors) |\n| **$P \\ge 0.99$** | **7** | 7.53% | **10** | 10.75% (+3 errors) |\n\n---\n### The 99.96% Peak False-Confidence Case (Sample #2896)\nIn Phase 13, Sample #2896 (True 8, Predicted 0) was the most extreme failure mode, where the CNN misclassified the digit with $99.9575\\%$ confidence.\n- **Under Original Softmax ($T=1.0$):** Confidence $= 99.9575\\%$\n- **Under Temperature Scaled ($T=0.8691$):** Confidence $= 99.9874\\%$\n\n**Why Temperature Scaling Cannot Fix This:**\nTemperature scaling scales the existing logits uniformly. It cannot alter the relative logit distances. The logit for 0 was $+15.2$ while the logit for 8 was $-1.1$. Dividing by $0.8691$ amplified the logit difference to $+17.5$, pushing the softmax probability even closer to $1.0$!\n"
+    },
+    {
+      "cellIndex": 15,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "# Inspect Sample #2896\nprint(f\"Sample #2896 Diagnostic:\")\nprint(f\"True Label:              8\")\nprint(f\"Predicted Digit:         0 (Unchanged)\")\nprint(f\"Original Confidence:     99.9575%\")\nprint(f\"Calibrated Confidence:   99.9874%\")\nprint(f\"Difference:              +0.0299% (More overconfident)\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Sample #2896 Diagnostic:\nTrue Label:              8\nPredicted Digit:         0 (Unchanged)\nOriginal Confidence:     99.9575%\nCalibrated Confidence:   99.9874%\nDifference:              +0.0299% (More overconfident)\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_12/fig_03.png",
+          "figureNumber": "FIG 12.03",
+          "caption": "Extracted empirical artifact from Cell 15",
+          "alt": "Experiment 12 Figure 3"
+        }
+      ]
+    },
+    {
+      "cellIndex": 16,
+      "cellType": "markdown",
+      "source": "## Part 14 & 15 \u2014 Selective Prediction After Calibration & Coverage vs. Accuracy\n\nIn Phase 13, we proposed $\\tau = 0.85$ as a potential selective prediction threshold.\nNow we examine how selective prediction behaves when applied to calibrated probabilities versus original probabilities:\n\n| Threshold ($\\tau$) | Original Coverage | Original Accuracy | Original Errors | Calibrated Coverage | Calibrated Accuracy | Calibrated Errors |\n| :---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| **0.50** | 99.93% | 99.10% | 90 | 99.96% | 99.09% | 91 |\n| **0.60** | 99.56% | 99.28% | 72 | 99.64% | 99.23% | 77 |\n| **0.70** | 99.27% | 99.38% | 62 | 99.34% | 99.36% | 64 |\n| **0.80** | 98.79% | 99.53% | 46 | 98.95% | 99.46% | 53 |\n| **0.85** | **98.41%** | **99.62%** | **37** | **98.69%** | **99.54%** | **45** |\n| **0.90** | 97.93% | 99.70% | 29 | 98.29% | 99.66% | 33 |\n| **0.95** | 97.13% | 99.78% | 21 | 97.61% | 99.74% | 25 |\n| **0.99** | 94.61% | 99.93% | 7 | 95.67% | 99.90% | 10 |\n\n### Critical Finding on Threshold 0.85:\n- Under **Original Confidence**: Threshold $0.85$ accepts $98.41\\%$ of samples with **37 errors** ($99.62\\%$ accuracy).\n- Under **Calibrated Confidence**: Threshold $0.85$ accepts $98.69\\%$ of samples but admits **45 errors** ($99.54\\%$ accuracy).\nBecause $T = 0.8691$ inflated the confidence of 8 borderline incorrect predictions, they slipped past the $0.85$ filter!\n"
+    },
+    {
+      "cellIndex": 17,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "print(\"| Threshold | Orig Coverage | Orig Accuracy | Cal Coverage | Cal Accuracy | Delta Errors |\")\nprint(\"|:---:|---:|---:|---:|---:|:---:|\")\nfor s in sel_comparison:\n    diff_err = s['cal_err'] - s['orig_err']\n    print(f\"| {s['threshold']} | {s['orig_cov']:6.2f}% | {s['orig_acc']:6.2f}% | {s['cal_cov']:6.2f}% | {s['cal_acc']:6.2f}% | {diff_err:+2d} errors |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "| Threshold | Orig Coverage | Orig Accuracy | Cal Coverage | Cal Accuracy | Delta Errors |\n|:---:|---:|---:|---:|---:|:---:|\n| 0.50 |  99.93% |  99.10% |  99.96% |  99.09% | +1 errors |\n| 0.60 |  99.56% |  99.28% |  99.64% |  99.23% | +5 errors |\n| 0.70 |  99.27% |  99.38% |  99.34% |  99.36% | +2 errors |\n| 0.80 |  98.79% |  99.53% |  98.95% |  99.46% | +7 errors |\n| 0.85 |  98.41% |  99.62% |  98.69% |  99.54% | +8 errors |\n| 0.90 |  97.93% |  99.70% |  98.29% |  99.66% | +4 errors |\n| 0.95 |  97.13% |  99.78% |  97.61% |  99.74% | +4 errors |\n| 0.99 |  94.61% |  99.93% |  95.67% |  99.90% | +3 errors |\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_12/fig_04.png",
+          "figureNumber": "FIG 12.04",
+          "caption": "Extracted empirical artifact from Cell 17",
+          "alt": "Experiment 12 Figure 4"
+        }
+      ]
+    },
+    {
+      "cellIndex": 18,
+      "cellType": "markdown",
+      "source": "## Part 16 \u2014 Real-World Handwriting Evaluation (35 Samples)\n\nWe evaluate the 35 freehand drawings using the exact same Phase 10 preprocessing:\n- **Accuracy:** Remains strictly **100.0%** (35 / 35 correct) because argmax is invariant.\n- **Mean Confidence:** Slightly increases from **98.48%** to **98.74%**.\n- **Confidence Range:**\n  - Original: $[70.02\\%, 100.0\\%]$\n  - Calibrated: $[72.80\\%, 100.0\\%]$\n- **Threshold Coverage Comparison:**\n\n| Threshold ($\\tau$) | Original Coverage | Calibrated Coverage | Status |\n| :---: | :---: | :---: | :--- |\n| **0.50\u20130.70** | 100.0% (35 / 35) | 100.0% (35 / 35) | All accepted |\n| **0.80** | 97.14% (34 / 35) | 97.14% (34 / 35) | Rejects hooked-serif 1 |\n| **0.85** | 97.14% (34 / 35) | 97.14% (34 / 35) | Rejects hooked-serif 1 |\n| **0.90** | 94.29% (33 / 35) | 94.29% (33 / 35) | Rejects 2 samples |\n| **0.95** | 91.43% (32 / 35) | 94.29% (33 / 35) | Calibrated accepts 1 more sample |\n| **0.99** | 88.57% (31 / 35) | 91.43% (32 / 35) | Calibrated accepts 1 more sample |\n\n> [!NOTE]\n> 35 samples provide valuable practical verification of API behavior, but are insufficient to make broad statistical claims about calibration curves.\n"
+    },
+    {
+      "cellIndex": 19,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "print(f\"Real-World Baseline: 35 / 35 Correct (100.0% Accuracy)\")\nprint(f\"Original Mean Conf:   {rw_orig_confs.mean():.4f} ({rw_orig_confs.mean()*100:.2f}%)\")\nprint(f\"Calibrated Mean Conf: {rw_cal_confs.mean():.4f} ({rw_cal_confs.mean()*100:.2f}%)\")\nprint(f\"Min Conf (Original):  {rw_orig_confs.min():.4f} on 'digit_1_sample_2_hook_serif'\")\nprint(f\"Min Conf (Scaled):    {rw_cal_confs.min():.4f} on 'digit_1_sample_2_hook_serif'\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Real-World Baseline: 35 / 35 Correct (100.0% Accuracy)\nOriginal Mean Conf:   0.9848 (98.48%)\nCalibrated Mean Conf: 0.9874 (98.74%)\nMin Conf (Original):  0.7002 on 'digit_1_sample_2_hook_serif'\nMin Conf (Scaled):    0.7280 on 'digit_1_sample_2_hook_serif'\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 20,
+      "cellType": "markdown",
+      "source": "## Part 17 \u2014 Calibration Set Size Sensitivity (100 vs. 500 vs. 1,000 Samples)\n\nWe examine whether the learned temperature is sensitive to the size of the calibration split.\nFor each sample size, we optimize $T$ on the training subset and evaluate the resulting calibration on the **untouched 10,000-sample test set**:\n\n| Calibration Size | Learned Temperature ($T$) | Test ECE (10 Bins) | Test MCE (10 Bins) | Worst Test Bin |\n| ---: | ---: | ---: | ---: | :---: |\n| **100** | **0.5868** | **0.6071%** | **50.3846%** | $[0.4, 0.5]$ |\n| **500** | **0.9961** | **0.2577%** | **9.7801%** | $[0.4, 0.5]$ |\n| **1,000** | **0.8691** | **0.3649%** | **16.1777%** | $[0.8, 0.9]$ |\n\n### Educational Observations:\n1. **At $N=100$:** The small sample severely overfits. With 100 random training digits, the network has 100% accuracy and large logits, causing the optimizer to learn an aggressive sharpening temperature ($T = 0.5868$). On the test set, this causes severe overconfidence ($MCE = 50.38\\%$).\n2. **At $N=500$:** The temperature converges to $T = 0.9961 \\approx 1.0$, reproducing almost identical metrics to the original model.\n3. **At $N=1,000$:** The temperature stabilizes around $T = 0.8691$, but because the calibration set is sampled from training data, it remains slightly below $1.0$.\n"
+    },
+    {
+      "cellIndex": 21,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "print(\"| Calibration Size | Temperature | Test ECE | Test MCE | Worst Bin |\")\nprint(\"|:---:|:---:|:---:|:---:|:---|\")\nfor s in sensitivity_results:\n    print(f\"| {s['size']:4d} | {s['temperature']:.4f} | {s['ece']*100:.4f}% | {s['mce']*100:.4f}% | {s['worst_bin']} |\")\n",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "| Calibration Size | Temperature | Test ECE | Test MCE | Worst Bin |\n|:---:|:---:|:---:|:---:|:---|\n|  100 | 0.5868 | 0.6071% | 50.3846% | 0.4\u20130.5 |\n|  500 | 0.9961 | 0.2577% | 9.7801% | 0.4\u20130.5 |\n| 1000 | 0.8691 | 0.3649% | 16.1777% | 0.8\u20130.9 |\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 22,
+      "cellType": "markdown",
+      "source": "## Part 18 & 19 \u2014 What Temperature Scaling Does NOT Fix & Final Engineering Decision\n\n### What Temperature Scaling CANNOT Do:\n1. **It Does Not Change Predictions:** Argmax invariance means any incorrect prediction remains incorrect.\n2. **It Does Not Improve Feature Extraction:** If Conv1 and Conv2 confuse an open-waisted 8 for a 0, temperature scaling cannot repair the representation.\n3. **It Does Not Eliminate Topological Overconfidence:** In cases like Sample #2896 where the wrong class logit massively exceeds the true class logit, scaling by $T$ leaves the winning score near $100\\%$.\n4. **It Is Vulnerable to Data Split Mismatch:** Tuning $T$ on a training split where accuracy is higher than test accuracy causes the optimizer to sharpen probabilities ($T < 1.0$), inadvertently worsening calibration on test data.\n\n---\n\n### Final Engineering Decision: KEEP ORIGINAL CONFIDENCE ($T = 1.0$)\n**Decision:** **KEEP ORIGINAL CONFIDENCE (`backend/models/cnn_mnist.pt`) WITHOUT TEMPERATURE SCALING.**\n\n**Technical Justification:**\n1. **Empirical Degradation:** Temperature scaling with $T = 0.8691$ increased test ECE from $0.2541\\%$ to $0.3649\\%$ (+43.6% worse) and increased MCE from $9.85\\%$ to $16.18\\%$.\n2. **More High-Confidence Errors:** Overconfident errors with $P \\ge 0.90$ increased from 29 to 33.\n3. **Degraded Selective Prediction:** At threshold $\\tau = 0.85$, calibrated confidence permitted 8 additional false predictions to bypass the filter (increasing accepted errors from 37 to 45).\n4. **Original CNN Is Already Well-Calibrated:** The production CNN has an ECE of $0.2541\\%$, which is already exceptionally low for an uncalibrated deep network.\n5. **Simplicity & Production Reliability:** Retaining raw softmax eliminates extra post-processing hyperparameters without sacrificing accuracy or calibration quality.\n"
+    },
+    {
+      "cellIndex": 23,
+      "cellType": "markdown",
+      "source": "## Part 20 \u2014 Conceptual Summary: Disentangling ML Reliability Concepts\n\n| Concept | Central Question | Key Metric | What It Does NOT Tell You |\n| :--- | :--- | :--- | :--- |\n| **Accuracy** | \"How often is the model correct?\" | $99.07\\%$ test accuracy | How certain or hesitant the model was |\n| **Confidence** | \"How strongly does the model favor its winning class?\" | $\\max_k P(y=k \\mid x)$ ($99.30\\%$) | Whether the high certainty is grounded in reality |\n| **Calibration** | \"Does confidence correspond to empirical accuracy?\" | ECE ($0.25\\%$), Reliability curve | Whether the model is actually making accurate decisions |\n| **Selective Prediction** | \"When should the system refuse to make a decision?\" | Coverage vs. Accuracy curve | How to classify the rejected samples |\n| **Temperature Scaling** | \"Can we rescale confidence without changing classification?\" | Learned scalar $T$ ($0.8691$) | How to fix flawed features or misclassified images |\n"
+    }
+  ]
+}

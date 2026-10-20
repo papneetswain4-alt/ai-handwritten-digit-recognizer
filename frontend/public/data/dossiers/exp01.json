@@ -1,0 +1,197 @@
+{
+  "id": "01",
+  "number": "01",
+  "title": "Dataset Exploration & Topological Analysis",
+  "shortTitle": "DATA EXPLORATION",
+  "chapterId": 1,
+  "chapterTitle": "Foundations",
+  "notebookFilename": "01_dataset_exploration.ipynb",
+  "headlineMetric": {
+    "label": "Dataset Size",
+    "value": "70,000 Images"
+  },
+  "subMetric": {
+    "label": "Topology",
+    "value": "28 \u00d7 28 Grayscale"
+  },
+  "keyQuestion": "What are the structural properties, statistical distributions, and class balance of raw MNIST images before learning?",
+  "keyTakeaway": "Images are spatial manifolds rather than arbitrary vector arrays; border pixels carry zero entropy, while digits are centered 20x20 boxes.",
+  "isNegativeResult": false,
+  "verifiedMetrics": {
+    "Train Samples": "60,000",
+    "Test Samples": "10,000",
+    "Dimensions": "784 (28\u00d728)",
+    "Classes": "10 Balanced"
+  },
+  "totalCells": 16,
+  "figureCount": 4,
+  "cells": [
+    {
+      "cellIndex": 1,
+      "cellType": "markdown",
+      "source": "# AI Lab: Phase 1 \u2014 Dataset Exploration (MNIST)\n\nWelcome to **AI Lab: Handwritten Digit Recognizer**! This project is a progressive, hands-on learning environment for machine learning and deep learning.\n\nIn this first phase, our objective is **dataset exploration and sanity checking**:\n- Download and load the standard **MNIST dataset** using `torchvision`.\n- Store raw data in `../data/raw/`.\n- Analyze dataset splits, dimensions, and color channels.\n- Examine class distribution to verify balance.\n- Inspect raw pixel intensity ranges and fundamental statistics.\n- Visualize individual digits and numeric matrices.\n\n> **Note:** In Phase 1, we do not build models or run training. Sound data exploration is the foundational first step of any successful machine learning project."
+    },
+    {
+      "cellIndex": 2,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "import os\nfrom pathlib import Path\nimport numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\nimport torch\nimport torchvision\n\n# Print library versions for reproducibility\nprint(f\"PyTorch Version:     {torch.__version__}\")\nprint(f\"Torchvision Version: {torchvision.__version__}\")\nprint(f\"NumPy Version:       {np.__version__}\")\nprint(f\"Pandas Version:      {pd.__version__}\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "PyTorch Version:     2.11.0+cpu\nTorchvision Version: 0.26.0+cpu\nNumPy Version:       2.1.3\nPandas Version:      2.2.3\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 3,
+      "cellType": "markdown",
+      "source": "## 1. Loading the MNIST Dataset\n\n### What is MNIST?\nThe **MNIST (Modified National Institute of Standards and Technology)** dataset is the \"Hello, World!\" of computer vision and pattern recognition. It consists of 70,000 grayscale images of handwritten digits (0 through 9) collected from Census Bureau employees and high school students.\n\n### Why torchvision?\n`torchvision` provides standard datasets, pre-built loaders, and transformation pipelines. When `download=True` is specified, `torchvision` automatically downloads the compressed IDX binary files if they are not already present.\n\n### Storage Strategy:\nWe store the raw download in `../data/raw/` so our original dataset remains untouched and reproducible."
+    },
+    {
+      "cellIndex": 4,
+      "cellType": "code",
+      "executionCount": 2,
+      "source": "# Define dataset path in data/raw\nRAW_DATA_PATH = Path(\"../backend/data/raw\") if Path(\"../backend/data/raw\").exists() else Path(\"backend/data/raw\")\nRAW_DATA_PATH.mkdir(parents=True, exist_ok=True)\n\n# Load training dataset (60,000 images)\ntrain_dataset = torchvision.datasets.MNIST(\n    root=str(RAW_DATA_PATH),\n    train=True,\n    download=True\n)\n\n# Load test dataset (10,000 images)\ntest_dataset = torchvision.datasets.MNIST(\n    root=str(RAW_DATA_PATH),\n    train=False,\n    download=True\n)\n\nprint(\"MNIST dataset successfully loaded into memory!\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "MNIST dataset successfully loaded into memory!\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 5,
+      "cellType": "markdown",
+      "source": "## 2. Dataset Dimensions and Split Sizes\n\n### What are we observing?\nWe observe the total sample counts across the training and testing splits, along with the 2D spatial dimensions of each image tensor.\n\n### Why this matters in Machine Learning:\n1. **Train/Test Separation**: Training on 60,000 samples and evaluating on a completely unseen test set of 10,000 samples prevents data leakage. It allows us to measure **generalization** (how well the model performs on new data) rather than mere **memorization** (overfitting).\n2. **Spatial Dimensionality ($28 \\times 28$)**: Each image has $28 \\times 28 = 784$ total pixels. In standard feedforward artificial neural networks (ANNs), these 784 pixels serve as individual input features. In convolutional neural networks (CNNs), the 2D structure $(1, 28, 28)$ is preserved to exploit local spatial relationships (edges, corners, loops)."
+    },
+    {
+      "cellIndex": 6,
+      "cellType": "code",
+      "executionCount": 3,
+      "source": "num_train = len(train_dataset)\nnum_test = len(test_dataset)\ntotal_samples = num_train + num_test\n\ntrain_data = train_dataset.data\ntrain_targets = train_dataset.targets\ntest_data = test_dataset.data\ntest_targets = test_dataset.targets\n\nprint(\"=\" * 50)\nprint(\"DATASET SPLIT & DIMENSIONS SUMMARY\")\nprint(\"=\" * 50)\nprint(f\"Training samples:    {num_train:,}  ({num_train / total_samples * 100:.1f}% of total)\")\nprint(f\"Testing samples:     {num_test:,}  ({num_test / total_samples * 100:.1f}% of total)\")\nprint(f\"Total samples:       {total_samples:,}\")\nprint(f\"Image dimensions:    {train_data.shape[1]} x {train_data.shape[2]} pixels\")\nprint(f\"Color channels:      1 (Grayscale)\")\nprint(f\"Train tensor shape:  {train_data.shape}  [N, H, W]\")\nprint(f\"Test tensor shape:   {test_data.shape}  [N, H, W]\")\nprint(\"=\" * 50)",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "==================================================\nDATASET SPLIT & DIMENSIONS SUMMARY\n==================================================\nTraining samples:    60,000  (85.7% of total)\nTesting samples:     10,000  (14.3% of total)\nTotal samples:       70,000\nImage dimensions:    28 x 28 pixels\nColor channels:      1 (Grayscale)\nTrain tensor shape:  torch.Size([60000, 28, 28])  [N, H, W]\nTest tensor shape:   torch.Size([10000, 28, 28])  [N, H, W]\n==================================================\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 7,
+      "cellType": "markdown",
+      "source": "## 3. Class Labels and Target Encoding\n\n### What are we observing?\nWe inspect the classes present in MNIST and how labels are stored internally.\n\n### Why this matters in Machine Learning:\n1. **Multi-Class Classification**: Since there are 10 distinct outcomes (digits 0 through 9), this is a 10-class multi-class problem (unlike binary classification which only has 2 classes).\n2. **Label Representation**: The labels are stored as integers `0` through `9`. During training (in future phases), loss functions like Cross-Entropy (`nn.CrossEntropyLoss`) expect integer class indices, which are internally compared against predicted probabilities."
+    },
+    {
+      "cellIndex": 8,
+      "cellType": "code",
+      "executionCount": 4,
+      "source": "classes = train_dataset.classes\nunique_labels = torch.unique(train_targets).tolist()\n\nprint(f\"Number of classes: {len(classes)}\")\nprint(\"Class labels and names:\")\nfor idx, cls_name in enumerate(classes):\n    print(f\"  Index {idx} -> '{cls_name}'\")\nprint(f\"\\nUnique label values in target tensor: {unique_labels}\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Number of classes: 10\nClass labels and names:\n  Index 0 -> '0 - zero'\n  Index 1 -> '1 - one'\n  Index 2 -> '2 - two'\n  Index 3 -> '3 - three'\n  Index 4 -> '4 - four'\n  Index 5 -> '5 - five'\n  Index 6 -> '6 - six'\n  Index 7 -> '7 - seven'\n  Index 8 -> '8 - eight'\n  Index 9 -> '9 - nine'\n\nUnique label values in target tensor: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 9,
+      "cellType": "markdown",
+      "source": "## 4. Class Distribution Analysis\n\n### What are we observing?\nWe calculate and chart the count and percentage share of each digit (0\u20139) across both the training set and the test set.\n\n### Why this matters in Machine Learning:\n1. **Class Balance**: If one digit appeared 90% of the time, a naive model could achieve 90% accuracy simply by guessing that majority class every time without learning anything useful. Checking class distribution confirms that all digits are approximately equally represented (~9% to ~11% each).\n2. **Metric Reliability**: Because the classes are well-balanced, standard classification accuracy is a reliable primary metric for benchmarking performance."
+    },
+    {
+      "cellIndex": 10,
+      "cellType": "code",
+      "executionCount": 5,
+      "source": "train_counts = pd.Series(train_targets.numpy()).value_counts().sort_index()\ntest_counts = pd.Series(test_targets.numpy()).value_counts().sort_index()\n\ndistribution_df = pd.DataFrame({\n    \"Digit\": range(10),\n    \"Class Name\": [classes[i] for i in range(10)],\n    \"Train Count\": train_counts.values,\n    \"Train Share (%)\": (train_counts.values / num_train * 100).round(2),\n    \"Test Count\": test_counts.values,\n    \"Test Share (%)\": (test_counts.values / num_test * 100).round(2)\n})\n\nprint(\"Class Distribution Table:\")\nprint(distribution_df.to_string(index=False))\n\n# Visualize Class Distribution\nfig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 4.5))\n\nax1.bar(train_counts.index, train_counts.values, color=\"#2563eb\", edgecolor=\"#1e3a8a\", alpha=0.85)\nax1.set_title(\"Training Set: Class Distribution (60,000 samples)\", fontsize=12, fontweight=\"bold\", pad=10)\nax1.set_xlabel(\"Digit Class\", fontsize=10)\nax1.set_ylabel(\"Number of Images\", fontsize=10)\nax1.set_xticks(range(10))\nax1.grid(axis=\"y\", linestyle=\"--\", alpha=0.6)\nfor x, y in zip(train_counts.index, train_counts.values):\n    ax1.text(x, y + 60, f\"{y:,}\", ha=\"center\", va=\"bottom\", fontsize=8)\n\nax2.bar(test_counts.index, test_counts.values, color=\"#059669\", edgecolor=\"#064e3b\", alpha=0.85)\nax2.set_title(\"Test Set: Class Distribution (10,000 samples)\", fontsize=12, fontweight=\"bold\", pad=10)\nax2.set_xlabel(\"Digit Class\", fontsize=10)\nax2.set_ylabel(\"Number of Images\", fontsize=10)\nax2.set_xticks(range(10))\nax2.grid(axis=\"y\", linestyle=\"--\", alpha=0.6)\nfor x, y in zip(test_counts.index, test_counts.values):\n    ax2.text(x, y + 15, f\"{y:,}\", ha=\"center\", va=\"bottom\", fontsize=8)\n\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Class Distribution Table:\n Digit Class Name  Train Count  Train Share (%)  Test Count  Test Share (%)\n     0   0 - zero         5923             9.87         980            9.80\n     1    1 - one         6742            11.24        1135           11.35\n     2    2 - two         5958             9.93        1032           10.32\n     3  3 - three         6131            10.22        1010           10.10\n     4   4 - four         5842             9.74         982            9.82\n     5   5 - five         5421             9.04         892            8.92\n     6    6 - six         5918             9.86         958            9.58\n     7  7 - seven         6265            10.44        1028           10.28\n     8  8 - eight         5851             9.75         974            9.74\n     9   9 - nine         5949             9.92        1009           10.09\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_01/fig_01.png",
+          "figureNumber": "FIG 01.01",
+          "caption": "Extracted empirical artifact from Cell 10",
+          "alt": "Experiment 01 Figure 1"
+        }
+      ]
+    },
+    {
+      "cellIndex": 11,
+      "cellType": "markdown",
+      "source": "## 5. Pixel Value Range and Basic Dataset Statistics\n\n### What are we observing?\nWe check the raw minimum, maximum, mean, and standard deviation of pixel values across the training data, as well as the pixel intensity distribution histogram.\n\n### Why this matters in Machine Learning:\n1. **Pixel Intensity Scale ($0$ to $255$)**: The raw images use 8-bit unsigned integer values where `0` represents a dark background and `255` represents a full-intensity white pen stroke.\n2. **Sparsity**: Notice that a large majority of pixel values are `0` (the background surrounding the handwritten stroke). This sparsity is an important structural feature of handwriting datasets.\n3. **Need for Normalization**: Raw inputs ranging from `0` to `255` can cause vanishing or exploding gradients when passed into neural networks with random weight initializations. In future phases, we will normalize pixel values to $[0.0, 1.0]$ or standardize them to mean $\\approx 0$ and standard deviation $\\approx 1$."
+    },
+    {
+      "cellIndex": 12,
+      "cellType": "code",
+      "executionCount": 6,
+      "source": "raw_min = train_data.min().item()\nraw_max = train_data.max().item()\nraw_mean = train_data.float().mean().item()\nraw_std = train_data.float().std().item()\n\nprint(\"=\" * 50)\nprint(\"RAW DATASET PIXEL STATISTICS\")\nprint(\"=\" * 50)\nprint(f\"Data Type:             {train_data.dtype}\")\nprint(f\"Minimum Pixel Value:   {raw_min}\")\nprint(f\"Maximum Pixel Value:   {raw_max}\")\nprint(f\"Mean Pixel Intensity:  {raw_mean:.2f}\")\nprint(f\"Std Dev of Intensity:  {raw_std:.2f}\")\nprint(f\"Resolution per image:  28 x 28 = {28 * 28} pixels\")\nprint(\"=\" * 50)\n\n# Pixel intensity distribution histogram (sampled from 1,000 images)\nsample_pixels = train_data[:1000].flatten().float().numpy()\n\nplt.figure(figsize=(9, 4))\nplt.hist(sample_pixels, bins=60, color=\"#4f46e5\", edgecolor=\"#312e81\", alpha=0.8)\nplt.title(\"Histogram of Raw Pixel Intensities (1,000 Sample Images)\", fontsize=12, fontweight=\"bold\", pad=10)\nplt.xlabel(\"Pixel Value (0 = Black background, 255 = White stroke)\", fontsize=10)\nplt.ylabel(\"Frequency (Log Scale)\", fontsize=10)\nplt.yscale(\"log\")\nplt.grid(axis=\"y\", linestyle=\"--\", alpha=0.6)\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "==================================================\nRAW DATASET PIXEL STATISTICS\n==================================================\nData Type:             torch.uint8\nMinimum Pixel Value:   0\nMaximum Pixel Value:   255\nMean Pixel Intensity:  33.32\nStd Dev of Intensity:  78.57\nResolution per image:  28 x 28 = 784 pixels\n==================================================\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_01/fig_02.png",
+          "figureNumber": "FIG 01.02",
+          "caption": "Extracted empirical artifact from Cell 12",
+          "alt": "Experiment 01 Figure 2"
+        }
+      ]
+    },
+    {
+      "cellIndex": 13,
+      "cellType": "markdown",
+      "source": "## 6. Visualizing Sample Handwritten Digits\n\n### What are we observing?\nWe render a diverse grid of sample handwritten digits alongside their actual ground-truth labels, followed by a zoomed-in matrix inspection of a single digit.\n\n### Why this matters in Machine Learning:\n1. **Intra-class Variation**: Notice how different people write the digit '2', '4', or '7'. Some people cross their 7s, loop their 2s, or slant their numbers. Machine learning models must learn invariant features that capture the digit's essence regardless of individual writing styles.\n2. **Connecting Vision to Numbers**: Digital images are just 2D matrices of numbers. By visualizing both the rendered image and its underlying 28x28 numeric values side-by-side, we directly see the input format our mathematical algorithms will process."
+    },
+    {
+      "cellIndex": 14,
+      "cellType": "code",
+      "executionCount": 7,
+      "source": "# Display a 4x6 grid of sample digits from the training set\nnp.random.seed(42)\nsample_indices = np.random.choice(len(train_dataset), size=24, replace=False)\n\nfig, axes = plt.subplots(4, 6, figsize=(12, 8))\nfig.suptitle(\"Sample Handwritten Digits from MNIST Training Set\", fontsize=15, fontweight=\"bold\", y=0.99)\n\nfor idx, ax in zip(sample_indices, axes.flatten()):\n    img, label = train_dataset[idx]\n    ax.imshow(img, cmap=\"gray\")\n    ax.set_title(f\"Label: {label}\", fontsize=10, fontweight=\"semibold\")\n    ax.axis(\"off\")\n\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stderr",
+          "text": "findfont: Failed to find font weight semibold for DejaVu Sans, now using 700.\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_01/fig_03.png",
+          "figureNumber": "FIG 01.03",
+          "caption": "Extracted empirical artifact from Cell 14",
+          "alt": "Experiment 01 Figure 3"
+        }
+      ]
+    },
+    {
+      "cellIndex": 15,
+      "cellType": "code",
+      "executionCount": 8,
+      "source": "# Detailed view: Image vs. Numeric Matrix Representation for a single sample\nsample_idx = 0\nsample_img, sample_lbl = train_dataset[sample_idx]\nsample_arr = np.array(sample_img)\n\nfig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), gridspec_kw={\"width_ratios\": [1, 1.4]})\n\n# Visual image display\nax1.imshow(sample_arr, cmap=\"gray\")\nax1.set_title(f\"Rendered Image (Ground Truth Label: {sample_lbl})\", fontsize=12, fontweight=\"bold\")\nax1.set_xlabel(\"Pixel Column (0 - 27)\")\nax1.set_ylabel(\"Pixel Row (0 - 27)\")\n\n# Heatmap matrix display\nim = ax2.imshow(sample_arr, cmap=\"Blues\")\nax2.set_title(f\"Matrix Heatmap (28 x 28 Pixel Values)\", fontsize=12, fontweight=\"bold\")\nax2.set_xlabel(\"Pixel Column (0 - 27)\")\nax2.set_ylabel(\"Pixel Row (0 - 27)\")\nplt.colorbar(im, ax=ax2, label=\"Raw Pixel Intensity (0 - 255)\", fraction=0.046, pad=0.04)\n\n# Overlay numeric intensity values on non-zero pixels in the central region\nfor r in range(6, 23):\n    for c in range(6, 23):\n        val = sample_arr[r, c]\n        if val > 40:\n            color = \"white\" if val > 160 else \"black\"\n            ax2.text(c, r, str(val), ha=\"center\", va=\"center\", color=color, fontsize=5.5)\n\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_01/fig_04.png",
+          "figureNumber": "FIG 01.04",
+          "caption": "Extracted empirical artifact from Cell 15",
+          "alt": "Experiment 01 Figure 4"
+        }
+      ]
+    },
+    {
+      "cellIndex": 16,
+      "cellType": "markdown",
+      "source": "## 7. Summary and Key Findings\n\n### Summary of Dataset Characteristics:\n| Property | Value | Description |\n| :--- | :--- | :--- |\n| **Dataset Name** | MNIST | Modified National Institute of Standards and Technology |\n| **Training Samples** | 60,000 | Used exclusively for fitting models |\n| **Testing Samples** | 10,000 | Used exclusively for evaluating unseen generalization |\n| **Resolution** | 28 $\\times$ 28 | 784 total features per image |\n| **Channels** | 1 | Grayscale single-channel input |\n| **Classes** | 10 | Digits 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 |\n| **Class Balance** | ~10% per class | Highly balanced; accuracy is a reliable metric |\n| **Raw Pixel Range** | 0 to 255 | 8-bit unsigned integer (sparse background at 0) |\n\n### Key Machine Learning Takeaways:\n1. **Uniform Class Distribution**: Since all digits have approximately 6,000 training images each, class imbalance techniques (like oversampling or weighted loss) are unnecessary here.\n2. **Data Transformation Required for Phase 2**: For neural network training, we should normalize inputs to $[0, 1]$ via `transforms.ToTensor()` and optionally standardize using MNIST's dataset mean (0.1307) and standard deviation (0.3081).\n3. **Zero Model Training**: As requested, this phase establishes data ingestion and statistical verification without training any models."
+    }
+  ]
+}

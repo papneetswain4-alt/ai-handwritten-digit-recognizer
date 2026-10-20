@@ -1,0 +1,192 @@
+{
+  "id": "02",
+  "number": "02",
+  "title": "K-Nearest Neighbors (KNN) Baseline",
+  "shortTitle": "KNN BASELINE",
+  "chapterId": 1,
+  "chapterTitle": "Foundations",
+  "notebookFilename": "02_knn_baseline.ipynb",
+  "headlineMetric": {
+    "label": "Test Accuracy",
+    "value": "97.05%"
+  },
+  "subMetric": {
+    "label": "Parameters",
+    "value": "0 (Non-parametric)"
+  },
+  "keyQuestion": "How accurately can a non-parametric instance-based algorithm classify handwritten digits without explicit parameter optimization?",
+  "keyTakeaway": "Achieved a strong baseline of 97.05% with K=3 L2 distance, but incurs high test-time memory and prediction latency.",
+  "isNegativeResult": false,
+  "verifiedMetrics": {
+    "Test Accuracy": "97.05%",
+    "K Neighbors": "3",
+    "Errors": "295 / 10,000",
+    "Latency": "1.59 ms/sample"
+  },
+  "totalCells": 15,
+  "figureCount": 3,
+  "cells": [
+    {
+      "cellIndex": 1,
+      "cellType": "markdown",
+      "source": "# AI Lab: Experiment 01 \u2014 K-Nearest Neighbors (KNN) Baseline\n\nWelcome to the first machine learning experiment of **AI Lab**! In this notebook, we build, evaluate, and analyze our very first classifier for handwritten digit recognition using the **K-Nearest Neighbors (KNN)** algorithm.\n\n---\n\n## Theoretical Concepts & Intuition\n\n### 1. What is K-Nearest Neighbors (KNN)?\n**K-Nearest Neighbors (KNN)** is one of the simplest, most intuitive, and widely used supervised machine learning algorithms. Unlike parametric models (such as Linear Regression or Neural Networks), KNN is:\n- **Non-parametric:** It makes no prior assumptions about the underlying distribution of the data.\n- **Instance-based (\"Lazy Learner\"):** It does not learn an explicit mathematical equation (weights and biases) during training. Instead, \"training\" simply consists of memorizing all training samples and their labels in memory. All heavy computational work occurs at **inference (prediction) time**.\n\n### 2. What does \"Nearest Neighbors\" mean?\nImagine every image in the dataset is a point plotted in a high-dimensional feature space. If an image has 784 pixels, it lives in a 784-dimensional geometric space.\n\nTo classify a new, unseen handwritten digit:\n1. We place the new digit into that 784-dimensional space.\n2. We calculate the geometric distance between this new point and every single training point.\n3. The closest training points are its **\"nearest neighbors\"**.\n\nThe most common distance metric is **Euclidean Distance** (straight-line distance):\n\n$$d(p, q) = \\sqrt{\\sum_{i=1}^{784} (p_i - q_i)^2}$$\n\nIf two handwritten digits have similar stroke patterns, their pixel intensities will match closely at corresponding positions, resulting in a small Euclidean distance.\n\n### 3. Why do we normalize pixel values from $[0, 255]$ to $[0, 1]$?\n- In raw digital images, pixel intensities range from `0` (black background) to `255` (full-intensity stroke).\n- Dividing by `255.0` bounds every feature strictly between `0.0` and `1.0`.\n- While uniform scaling across all pixels doesn't alter relative Euclidean rankings in pure KNN, normalization is standard machine learning hygiene. It prevents numeric overflow during squared distance calculations, maintains floating-point precision, and prepares the dataset consistently for future algorithms.\n\n### 4. Why are the 2D images ($28 \\times 28$) flattened into 784 features?\n- Standard classical machine learning algorithms (like scikit-learn's `KNeighborsClassifier`) expect tabular 2D input matrices of shape `(n_samples, n_features)`.\n- By flattening each $28 \\times 28$ matrix into a 1D vector of length $784$ ($28 \\times 28 = 784$), each pixel coordinate becomes a distinct feature column ($x_0, x_1, \\dots, x_{783}$).\n- *Trade-off to note:* Flattening removes 2D spatial locality (the fact that pixel $(r, c)$ is vertically adjacent to $(r+1, c)$). This limitation is a primary motivation for why Convolutional Neural Networks (CNNs) were developed!\n\n### 5. What does $K$ mean and how does prediction work?\n- **$K$ is a hyperparameter** specifying how many nearest neighbors participate in voting.\n- In this experiment, we set **$K = 3$**.\n- **Prediction Workflow:**\n  1. Compute Euclidean distance from the test image to all 60,000 training images.\n  2. Find the $3$ training images with the smallest distance.\n  3. Check the labels of those 3 neighbors (e.g., `[7, 7, 2]`).\n  4. **Majority Voting:** The most frequent class wins (here, `7` receives 2 votes out of 3).\n  5. An odd number like $K=3$ helps avoid voting ties in binary comparisons."
+    },
+    {
+      "cellIndex": 2,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "import time\nfrom pathlib import Path\nimport numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\nimport torch\nimport torchvision\nfrom sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.metrics import accuracy_score, confusion_matrix, classification_report\n\n# Configure matplotlib styling\nplt.rcParams[\"figure.facecolor\"] = \"white\"\nplt.rcParams[\"axes.grid\"] = False\n\nprint(\"Libraries successfully imported!\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Libraries successfully imported!\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 3,
+      "cellType": "markdown",
+      "source": "## Step 1: Loading the MNIST Dataset\n\nWe load the official MNIST dataset using `torchvision.datasets.MNIST`, pulling directly from our project's local raw data directory (`../data/raw`)."
+    },
+    {
+      "cellIndex": 4,
+      "cellType": "code",
+      "executionCount": 2,
+      "source": "DATA_DIR = Path(\"../backend/data/raw\") if Path(\"../backend/data/raw\").exists() else Path(\"backend/data/raw\")\n\n# Load 60,000 training images and 10,000 test images\ntrain_dataset = torchvision.datasets.MNIST(root=str(DATA_DIR), train=True, download=False)\ntest_dataset = torchvision.datasets.MNIST(root=str(DATA_DIR), train=False, download=False)\n\nprint(f\"Raw Training samples: {len(train_dataset):,}\")\nprint(f\"Raw Testing samples:  {len(test_dataset):,}\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Raw Training samples: 60,000\nRaw Testing samples:  10,000\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 5,
+      "cellType": "markdown",
+      "source": "## Step 2: Preprocessing \u2014 Normalization & Flattening\n\nHere we convert the PyTorch tensors to NumPy arrays, scale pixel values from $[0, 255]$ down to $[0.0, 1.0]$, and flatten each $28 \\times 28$ image into a 784-dimensional vector."
+    },
+    {
+      "cellIndex": 6,
+      "cellType": "code",
+      "executionCount": 3,
+      "source": "# 1. Convert to float32 and normalize [0, 255] -> [0.0, 1.0]\n# 2. Reshape from (N, 28, 28) -> (N, 784)\nX_train = (train_dataset.data.float() / 255.0).reshape(-1, 28 * 28).numpy()\ny_train = train_dataset.targets.numpy()\n\nX_test = (test_dataset.data.float() / 255.0).reshape(-1, 28 * 28).numpy()\ny_test = test_dataset.targets.numpy()\n\nprint(\"=\" * 50)\nprint(\"PREPROCESSED DATASET SPECIFICATIONS\")\nprint(\"=\" * 50)\nprint(f\"X_train shape:    {X_train.shape}  (Samples: {X_train.shape[0]:,}, Features: {X_train.shape[1]})\")\nprint(f\"y_train shape:    {y_train.shape}   (Targets: {len(y_train):,})\")\nprint(f\"X_test shape:     {X_test.shape}  (Samples: {X_test.shape[0]:,}, Features: {X_test.shape[1]})\")\nprint(f\"y_test shape:     {y_test.shape}   (Targets: {len(y_test):,})\")\nprint(f\"Pixel Value Range:[{X_train.min():.1f}, {X_train.max():.1f}]\")\nprint(f\"Data Type:        {X_train.dtype}\")\nprint(\"=\" * 50)",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "==================================================\nPREPROCESSED DATASET SPECIFICATIONS\n==================================================\nX_train shape:    (60000, 784)  (Samples: 60,000, Features: 784)\ny_train shape:    (60000,)   (Targets: 60,000)\nX_test shape:     (10000, 784)  (Samples: 10,000, Features: 784)\ny_test shape:     (10000,)   (Targets: 10,000)\n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Pixel Value Range:[0.0, 1.0]\nData Type:        float32\n==================================================\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 7,
+      "cellType": "markdown",
+      "source": "## Step 3: Initializing and Training KNN ($K = 3$)\n\nWe instantiate scikit-learn's `KNeighborsClassifier` with:\n- `n_neighbors = 3`: Each classification query checks the 3 nearest training samples.\n- `n_jobs = -1`: Utilizes all available CPU cores for parallel distance computation during evaluation.\n\n> **Note on \"Fitting\" KNN:** In parametric models like linear regression or neural networks, `.fit()` runs thousands of optimization iterations (gradient descent) to find weights. In KNN, `.fit()` simply builds an internal index structure (or references the data array). Observe how fast `.fit()` executes!"
+    },
+    {
+      "cellIndex": 8,
+      "cellType": "code",
+      "executionCount": 4,
+      "source": "# Instantiate K-Nearest Neighbors Classifier with K = 3\nk_value = 3\nknn = KNeighborsClassifier(n_neighbors=k_value, n_jobs=-1)\n\n# Measure training time\nstart_fit = time.time()\nknn.fit(X_train, y_train)\nfit_duration = time.time() - start_fit\n\nprint(f\"Model:             KNeighborsClassifier(n_neighbors={k_value})\")\nprint(f\"Training Time:     {fit_duration:.4f} seconds\")\nprint(\"Training Complete: Stored 60,000 samples in search index.\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Model:             KNeighborsClassifier(n_neighbors=3)\nTraining Time:     0.1764 seconds\nTraining Complete: Stored 60,000 samples in search index.\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 9,
+      "cellType": "markdown",
+      "source": "## Step 4: Evaluating on the Test Dataset & Measuring Prediction Time\n\nNow we evaluate the model on the full **10,000 test samples**.\n\nFor each of the 10,000 test samples, the classifier must compute distances against all 60,000 training samples. That is a total of:\n$$\\text{Total distance calculations} = 10,000 \\times 60,000 = 600,000,000$$\n\nWe track the prediction time to observe the computational cost of inference."
+    },
+    {
+      "cellIndex": 10,
+      "cellType": "code",
+      "executionCount": 5,
+      "source": "print(\"Generating predictions for 10,000 test images using K=3...\")\nstart_pred = time.time()\ny_pred = knn.predict(X_test)\npred_duration = time.time() - start_pred\n\ntest_accuracy = accuracy_score(y_test, y_pred)\navg_time_per_sample_ms = (pred_duration / len(X_test)) * 1000\n\nprint(\"=\" * 50)\nprint(\"TEST SET PERFORMANCE SUMMARY\")\nprint(\"=\" * 50)\nprint(f\"Total Test Accuracy:        {test_accuracy * 100:.2f}%\")\nprint(f\"Correctly Classified:       {np.sum(y_test == y_pred):,} / {len(y_test):,} images\")\nprint(f\"Misclassified:              {np.sum(y_test != y_pred):,} / {len(y_test):,} images\")\nprint(f\"Total Prediction Time:      {pred_duration:.2f} seconds\")\nprint(f\"Average Time per Sample:    {avg_time_per_sample_ms:.2f} ms\")\nprint(\"=\" * 50)",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Generating predictions for 10,000 test images using K=3...\n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "==================================================\nTEST SET PERFORMANCE SUMMARY\n==================================================\nTotal Test Accuracy:        97.05%\nCorrectly Classified:       9,705 / 10,000 images\nMisclassified:              295 / 10,000 images\nTotal Prediction Time:      15.88 seconds\nAverage Time per Sample:    1.59 ms\n==================================================\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 11,
+      "cellType": "markdown",
+      "source": "## Step 5: Classification Report & Confusion Matrix\n\nTo understand how well KNN performs across each individual digit class, we analyze:\n1. **Precision:** Out of all images the model predicted as digit $D$, how many were actually digit $D$?\n2. **Recall:** Out of all actual ground-truth digit $D$ images, how many did the model correctly identify?\n3. **F1-Score:** The harmonic mean of precision and recall ($2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}}$).\n4. **Confusion Matrix:** A $10 \\times 10$ matrix showing actual vs. predicted labels, highlighting which digits get confused with one another."
+    },
+    {
+      "cellIndex": 12,
+      "cellType": "code",
+      "executionCount": 6,
+      "source": "# Print detailed classification metrics\nclass_names = [f\"Digit {i}\" for i in range(10)]\nreport_str = classification_report(y_test, y_pred, target_names=class_names, digits=4)\nprint(\"CLASSIFICATION REPORT (KNN with K=3):\")\nprint(report_str)\n\n# Compute confusion matrix\ncm = confusion_matrix(y_test, y_pred)\n\n# Visualize confusion matrix as an annotated heatmap\nfig, ax = plt.subplots(figsize=(9, 8))\ncax = ax.matshow(cm, cmap=\"Blues\", alpha=0.85)\nfig.colorbar(cax, fraction=0.046, pad=0.04, label=\"Number of Samples\")\n\n# Axis labels and ticks\nax.set_xticks(range(10))\nax.set_yticks(range(10))\nax.set_xticklabels(range(10), fontsize=10)\nax.set_yticklabels(range(10), fontsize=10)\nax.set_xlabel(\"Predicted Label\", fontsize=11, fontweight=\"bold\", labelpad=10)\nax.set_ylabel(\"True Label\", fontsize=11, fontweight=\"bold\", labelpad=10)\nax.set_title(\"Confusion Matrix: KNN (K=3) on MNIST Test Set\", fontsize=13, fontweight=\"bold\", pad=15)\n\n# Annotate each cell with its count\nfor i in range(10):\n    for j in range(10):\n        count = cm[i, j]\n        text_color = \"white\" if count > (cm.max() / 2) else \"black\"\n        fontweight = \"bold\" if i == j else \"normal\"\n        ax.text(j, i, str(count), ha=\"center\", va=\"center\", color=text_color, fontsize=9, fontweight=fontweight)\n\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "CLASSIFICATION REPORT (KNN with K=3):\n              precision    recall  f1-score   support\n\n     Digit 0     0.9663    0.9939    0.9799       980\n     Digit 1     0.9577    0.9982    0.9776      1135\n     Digit 2     0.9822    0.9651    0.9736      1032\n     Digit 3     0.9635    0.9663    0.9649      1010\n     Digit 4     0.9754    0.9674    0.9714       982\n     Digit 5     0.9663    0.9630    0.9646       892\n     Digit 6     0.9833    0.9854    0.9844       958\n     Digit 7     0.9649    0.9640    0.9645      1028\n     Digit 8     0.9892    0.9384    0.9631       974\n     Digit 9     0.9603    0.9594    0.9598      1009\n\n    accuracy                         0.9705     10000\n   macro avg     0.9709    0.9701    0.9704     10000\nweighted avg     0.9707    0.9705    0.9705     10000\n\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_02/fig_01.png",
+          "figureNumber": "FIG 02.01",
+          "caption": "Extracted empirical artifact from Cell 12",
+          "alt": "Experiment 02 Figure 1"
+        }
+      ]
+    },
+    {
+      "cellIndex": 13,
+      "cellType": "markdown",
+      "source": "## Step 6: Visualizing Test Examples & Failure Analysis\n\nInspecting predictions visually is a critical machine learning skill. It allows us to:\n1. Confirm that correctly classified digits are recognized with high fidelity.\n2. Conduct **error analysis** on misclassified digits to see why KNN made a mistake (e.g., highly ambiguous handwriting, unusually thick/thin strokes, or slanted numbers)."
+    },
+    {
+      "cellIndex": 14,
+      "cellType": "code",
+      "executionCount": 7,
+      "source": "# Find indices of correctly classified and misclassified samples\ncorrect_indices = np.where(y_test == y_pred)[0]\nincorrect_indices = np.where(y_test != y_pred)[0]\n\nprint(f\"Total Correct Samples:   {len(correct_indices):,} ({len(correct_indices)/len(y_test)*100:.2f}%)\")\nprint(f\"Total Incorrect Samples: {len(incorrect_indices):,} ({len(incorrect_indices)/len(y_test)*100:.2f}%)\")\n\n# 1. Display 10 Correctly Classified Samples\nnp.random.seed(42)\nsample_correct = np.random.choice(correct_indices, size=10, replace=False)\n\nfig, axes = plt.subplots(2, 5, figsize=(12, 5))\nfig.suptitle(\"Sample CORRECT Predictions (KNN, K=3)\", fontsize=14, fontweight=\"bold\", y=1.02, color=\"#15803d\")\n\nfor idx, ax in zip(sample_correct, axes.flatten()):\n    img = X_test[idx].reshape(28, 28)\n    true_lbl = y_test[idx]\n    pred_lbl = y_pred[idx]\n    \n    ax.imshow(img, cmap=\"gray\")\n    ax.set_title(f\"True: {true_lbl} | Pred: {pred_lbl}\", fontsize=10, color=\"green\", fontweight=\"bold\")\n    ax.axis(\"off\")\n\nplt.tight_layout()\nplt.show()\n\n# 2. Display 10 Misclassified Samples (Error Analysis)\nsample_incorrect = incorrect_indices[:10]\n\nfig, axes = plt.subplots(2, 5, figsize=(12, 5))\nfig.suptitle(\"Sample MISCLASSIFIED Predictions (Failure Mode Inspection)\", fontsize=14, fontweight=\"bold\", y=1.02, color=\"#b91c1c\")\n\nfor idx, ax in zip(sample_incorrect, axes.flatten()):\n    img = X_test[idx].reshape(28, 28)\n    true_lbl = y_test[idx]\n    pred_lbl = y_pred[idx]\n    \n    ax.imshow(img, cmap=\"gray\")\n    ax.set_title(f\"True: {true_lbl} -> Pred: {pred_lbl}\", fontsize=10, color=\"red\", fontweight=\"bold\")\n    ax.axis(\"off\")\n\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Total Correct Samples:   9,705 (97.05%)\nTotal Incorrect Samples: 295 (2.95%)\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_02/fig_02.png",
+          "figureNumber": "FIG 02.02",
+          "caption": "Extracted empirical artifact from Cell 14",
+          "alt": "Experiment 02 Figure 2"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_02/fig_03.png",
+          "figureNumber": "FIG 02.03",
+          "caption": "Extracted empirical artifact from Cell 14",
+          "alt": "Experiment 02 Figure 3"
+        }
+      ]
+    },
+    {
+      "cellIndex": 15,
+      "cellType": "markdown",
+      "source": "## Step 7: Experiment Summary & Critical Review\n\n### Experiment Results Table\n| Metric / Setting | Value | Description |\n| :--- | :--- | :--- |\n| **Algorithm** | K-Nearest Neighbors (KNN) | Distance-based non-parametric classifier |\n| **K Value** | **3** | Number of nearest neighbors voting for class |\n| **Distance Metric** | Euclidean ($L_2$) | Straight-line distance in 784-D feature space |\n| **Training Samples** | 60,000 | Full MNIST training split |\n| **Test Samples** | 10,000 | Full MNIST test split |\n| **Features** | 784 | Flattened $28 \\times 28$ normalized pixel values ($[0.0, 1.0]$) |\n| **Training Time** | ~0.12 seconds | Instantaneous storage / indexing (lazy learning) |\n| **Total Prediction Time** | ~14 - 15 seconds | Parallel evaluation of $600,000,000$ distance checks |\n| **Per-Sample Latency** | ~1.5 ms / sample | Prediction latency per test query |\n| **Overall Accuracy** | **97.05%** | Percentage of correctly classified test digits |\n\n---\n\n### Observed Strengths of KNN:\n1. **High Baseline Accuracy:** Without any feature engineering or neural network training, KNN achieves **97.05% accuracy**, proving that pixel-space proximity is a strong initial signal for MNIST.\n2. **Zero Training Time:** Fitting requires virtually zero computational overhead because the model simply holds references to the 60,000 training samples.\n3. **Intuitive & Explainable:** Every classification decision can be explained by displaying the 3 nearest training images that voted for that class.\n4. **No Convergence / Loss Tuning:** There are no learning rates, epochs, or loss divergence problems.\n\n---\n\n### Observed Weaknesses of KNN:\n1. **High Inference Cost ($O(N \\cdot D)$):** To classify a single image, KNN must calculate distances against all 60,000 training vectors across 784 dimensions. If our dataset grew to 1,000,000 images, real-time prediction would be sluggish without complex vector databases.\n2. **High Memory Footprint:** The entire training set (all 60,000 images $\\times$ 784 floats $\\approx 188$ MB) must remain permanently resident in RAM for inference.\n3. **Curse of Dimensionality:** In 784-dimensional space, Euclidean distance becomes less discriminative because high-dimensional points tend to become equidistant.\n4. **Lack of Spatial Awareness:** KNN treats pixel $(0, 0)$ and pixel $(0, 1)$ with the same independent distance formula as pixel $(0, 0)$ and $(27, 27)$. A digit shifted by just 2 pixels to the right changes all 784 pixel distances, which can mislead Euclidean distance.\n5. **Motivation for Next Steps:** These weaknesses directly motivate why parameterized models (Artificial Neural Networks and Convolutional Neural Networks) will be introduced in subsequent phases."
+    }
+  ]
+}

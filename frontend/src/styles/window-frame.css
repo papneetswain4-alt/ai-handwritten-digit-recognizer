@@ -1,0 +1,159 @@
+/* AI LAB // ARCHIVAL WORKSTATION WINDOW & DOSSIER STYLES */
+
+/* Vintage Technical Workstation Window Container */
+.archival-window {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-gray-600);
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.85);
+}
+
+.archival-window.double-border {
+  outline: 1px solid var(--color-gray-700);
+  outline-offset: 3px;
+}
+
+/* Window Titlebar Header */
+.archival-window-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--color-ink-900);
+  border-bottom: 1px solid var(--color-gray-700);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.titlebar-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.titlebar-dot {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--color-gray-500);
+  background: transparent;
+  display: inline-block;
+}
+
+.titlebar-title {
+  color: var(--color-white);
+  font-weight: 500;
+}
+
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.titlebar-tag {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* Close/Action Box */
+.titlebar-btn {
+  background: transparent;
+  border: 1px solid var(--color-gray-600);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.titlebar-btn:hover {
+  background: var(--color-white);
+  color: var(--color-black);
+  border-color: var(--color-white);
+}
+
+/* Physical Stepped Folder Tabs (Reference 2 Inspiration) */
+.archival-folder-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-gray-600);
+  padding: 0 12px;
+  background: var(--color-black);
+  overflow-x: auto;
+}
+
+.folder-tab {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 14px;
+  background: var(--color-ink-950);
+  color: var(--text-muted);
+  border: 1px solid var(--color-gray-700);
+  border-bottom: none;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.folder-tab:hover {
+  color: var(--color-white);
+  background: var(--color-ink-900);
+  border-color: var(--color-gray-500);
+}
+
+.folder-tab.active {
+  background: var(--color-ink-850);
+  color: var(--color-white);
+  border-color: var(--color-gray-400);
+  font-weight: 600;
+  margin-bottom: -1px;
+  border-bottom: 1px solid var(--color-ink-850);
+  z-index: 2;
+}
+
+/* Archival Metadata Table */
+.archival-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  background: var(--color-gray-700);
+  border: 1px solid var(--color-gray-700);
+  margin-bottom: 18px;
+}
+
+.archival-meta-cell {
+  background: var(--color-ink-950);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.archival-meta-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.archival-meta-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-white);
+}

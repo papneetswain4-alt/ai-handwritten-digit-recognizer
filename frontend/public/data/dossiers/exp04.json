@@ -1,0 +1,207 @@
+{
+  "id": "04",
+  "number": "04",
+  "title": "Logistic Regression & Linear Decision Boundaries",
+  "shortTitle": "LOGISTIC REGRESSION",
+  "chapterId": 1,
+  "chapterTitle": "Foundations",
+  "notebookFilename": "04_logistic_regression.ipynb",
+  "headlineMetric": {
+    "label": "Test Accuracy",
+    "value": "92.56%"
+  },
+  "subMetric": {
+    "label": "Parameters",
+    "value": "7,850 Weights"
+  },
+  "keyQuestion": "Can linear decision boundaries in 784-dimensional space separate non-linear handwritten digits, and what do the learned weights represent?",
+  "keyTakeaway": "Learned pixel-weight patterns and linear decision boundaries reach 92.56%, but cannot resolve overlapping stroke topologies without non-linearities.",
+  "isNegativeResult": false,
+  "verifiedMetrics": {
+    "Test Accuracy": "92.56%",
+    "Model Type": "Multinomial Logistic Regression",
+    "Weights": "7,840 + 10 bias",
+    "Errors": "744 / 10,000"
+  },
+  "totalCells": 17,
+  "figureCount": 4,
+  "cells": [
+    {
+      "cellIndex": 1,
+      "cellType": "markdown",
+      "source": "# AI Lab: Experiment 03 \u2014 Multiclass Logistic Regression\n\nWelcome to the third machine learning experiment of **AI Lab**! In Experiments 01 and 02, we explored **K-Nearest Neighbors (KNN)**, an *instance-based (lazy)* learning algorithm.\n\nIn this notebook, we introduce our second fundamental algorithm: **Logistic Regression**. This represents our very first **parameterized model**\u2014a model that *learns mathematical parameters (weights and biases)* from training data.\n\n---\n\n## Theoretical Concepts & Machine Learning Fundamentals\n\n### 1. What is Logistic Regression?\n**Logistic Regression** is a foundational linear model for classification. For any given input vector $\\mathbf{x} = [x_1, x_2, \\dots, x_{784}]$, it computes a linear combination of the features:\n\n$$z = \\mathbf{w} \\cdot \\mathbf{x} + b = w_1 x_1 + w_2 x_2 + \\dots + w_{784} x_{784} + b$$\n\nIt then passes this linear score $z$ through a non-linear activation function:\n- For binary classification: The **Sigmoid function** $\\sigma(z) = \\frac{1}{1 + e^{-z}}$, which squashes values into a probability between $0$ and $1$.\n- For multiclass classification (MNIST, digits 0\u20139): The **Softmax function**, which turns 10 raw linear scores (logits) into a normalized probability distribution where all 10 probabilities sum to $1.0$:\n\n$$P(y = c \\mid \\mathbf{x}) = \\frac{e^{z_c}}{\\sum_{j=0}^{9} e^{z_j}}$$\n\n### 2. Why is it called \"Regression\" if we use it for Classification?\nThe name is historical. In statistics, the core equation inside the model\u2014$\\mathbf{w} \\cdot \\mathbf{x} + b$\u2014is standard **linear regression**. The model literally performs linear regression to predict the *log-odds* (or logit) of the class probabilities: $\\ln\\left(\\frac{p}{1-p}\\right) = \\mathbf{w} \\cdot \\mathbf{x} + b$. Because it regresses continuous log-odds and uses a threshold/argmax to assign discrete class labels, it is called Logistic *Regression* despite being used for *classification*.\n\n### 3. What are Model Parameters, Weights, and Biases?\n- **Parameters:** Internal numeric variables that the algorithm adjusts during training to fit the patterns in the data.\n- **Weights ($\\mathbf{w}$):** Each feature (pixel) has an associated weight. The weight dictates the *importance and direction* of that pixel:\n  - A **positive weight** means bright pixels in that location increase the probability of that digit class.\n  - A **negative weight** means bright pixels in that location decrease the probability of that digit class.\n- **Bias ($b$):** An offset or base threshold for each class, independent of the input pixels.\n- **Total Parameters in our MNIST Model:** For 10 digit classes and 784 pixels:\n  $$\\text{Total Parameters} = (784 \\times 10) + 10 = 7,840 \\text{ weights} + 10 \\text{ biases} = 7,850 \\text{ parameters}$$\n\n### 4. What is a Decision Boundary?\nA **decision boundary** is the geometric threshold in feature space where the model transitions its prediction from one class to another. Because Logistic Regression computes linear equations ($z = \\mathbf{w} \\cdot \\mathbf{x} + b$), its decision boundaries are **hyperplanes (flat lines/planes)**. In contrast, KNN creates complex, curved, non-linear boundaries.\n\n### 5. Parameterized Model vs. Instance-Based Learning (KNN vs. Logistic Regression)\n| Property | KNN (Instance-Based) | Logistic Regression (Parameterized) |\n| :--- | :--- | :--- |\n| **Core Mechanism** | Memorizes all 60,000 raw samples | Learns 7,850 weights & biases |\n| **Training Process** | Instant ($O(1)$) \u2014 just stores data | Iterative optimization (L-BFGS) |\n| **Inference Process** | Heavy ($O(N \\cdot D)$) \u2014 600M distances | Tiny ($O(D)$) \u2014 10 dot products |\n| **Memory in RAM** | ~188 MB (all training vectors) | ~31 KB (only weights and biases) |\n| **Decision Boundary** | Highly non-linear, flexible | Strictly linear hyperplanes |\n\n### 6. What do \"Training\" and \"Inference\" mean for Logistic Regression?\n- **Training:** The model starts with random or zero weights. It measures its errors on the training set using the **Cross-Entropy Loss (Log-Loss)** and iteratively nudges weights using optimization (e.g., L-BFGS or gradient descent) until loss is minimized.\n- **Inference (Prediction):** At test time, the 60,000 training images are completely discarded! To classify an unseen digit, the computer merely performs 10 quick dot products ($X \\cdot W^T + b$) and picks the highest score."
+    },
+    {
+      "cellIndex": 2,
+      "cellType": "code",
+      "executionCount": 1,
+      "source": "import time\nfrom pathlib import Path\nimport numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\nimport torch\nimport torchvision\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix, classification_report\n\n# Configure matplotlib styling\nplt.rcParams[\"figure.facecolor\"] = \"white\"\nplt.rcParams[\"axes.grid\"] = False\n\nprint(\"Environment and libraries successfully configured!\")",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Environment and libraries successfully configured!\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 3,
+      "cellType": "markdown",
+      "source": "## Step 1: Loading & Preprocessing MNIST Data\n\nTo ensure a strictly fair and controlled comparison with Experiments 01 and 02, we load the identical MNIST dataset from `../data/raw/`, normalize pixel values to $[0.0, 1.0]$, and flatten images into 784-dimensional vectors."
+    },
+    {
+      "cellIndex": 4,
+      "cellType": "code",
+      "executionCount": 2,
+      "source": "DATA_DIR = Path(\"../backend/data/raw\") if Path(\"../backend/data/raw\").exists() else Path(\"backend/data/raw\")\n\n# Load training (60,000) and testing (10,000) splits\ntrain_dataset = torchvision.datasets.MNIST(root=str(DATA_DIR), train=True, download=False)\ntest_dataset = torchvision.datasets.MNIST(root=str(DATA_DIR), train=False, download=False)\n\n# Normalize [0, 255] -> [0.0, 1.0] and flatten (28x28) -> 784\nX_train = (train_dataset.data.float() / 255.0).reshape(-1, 28 * 28).numpy()\ny_train = train_dataset.targets.numpy()\n\nX_test = (test_dataset.data.float() / 255.0).reshape(-1, 28 * 28).numpy()\ny_test = test_dataset.targets.numpy()\n\nprint(\"=\" * 50)\nprint(\"DATASET SUMMARY FOR LOGISTIC REGRESSION\")\nprint(\"=\" * 50)\nprint(f\"X_train shape: {X_train.shape}  (60,000 samples x 784 features)\")\nprint(f\"y_train shape: {y_train.shape}   (60,000 integer labels: 0-9)\")\nprint(f\"X_test shape:  {X_test.shape}  (10,000 samples x 784 features)\")\nprint(f\"y_test shape:  {y_test.shape}   (10,000 integer labels: 0-9)\")\nprint(f\"Pixel Range:   [{X_train.min():.1f}, {X_train.max():.1f}]\")\nprint(\"=\" * 50)",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "==================================================\nDATASET SUMMARY FOR LOGISTIC REGRESSION\n==================================================\nX_train shape: (60000, 784)  (60,000 samples x 784 features)\ny_train shape: (60000,)   (60,000 integer labels: 0-9)\nX_test shape:  (10000, 784)  (10,000 samples x 784 features)\ny_test shape:  (10000,)   (10,000 integer labels: 0-9)\nPixel Range:   [0.0, 1.0]\n==================================================\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 5,
+      "cellType": "markdown",
+      "source": "## Step 2: Initializing and Training Logistic Regression\n\nWe instantiate scikit-learn's `LogisticRegression` with:\n- `solver='lbfgs'`: A quasi-Newton second-order optimization method highly effective for continuous multiclass problems.\n- `max_iter=100`: Maximum optimization iterations allowed.\n- `random_state=42`: Ensures deterministic reproducibility.\n\nWe measure the **training time** to observe the computational cost of iterative optimization."
+    },
+    {
+      "cellIndex": 6,
+      "cellType": "code",
+      "executionCount": 3,
+      "source": "# Instantiate Multiclass Logistic Regression\nlr_model = LogisticRegression(solver=\"lbfgs\", max_iter=100, random_state=42)\n\nprint(\"Training Multiclass Logistic Regression on 60,000 samples...\")\nstart_train = time.time()\nlr_model.fit(X_train, y_train)\ntrain_duration = time.time() - start_train\n\nprint(\"\\n\" + \"=\" * 50)\nprint(\"TRAINING COMPLETED\")\nprint(\"=\" * 50)\nprint(f\"Training Time:       {train_duration:.2f} seconds\")\nprint(f\"Weights Shape:       {lr_model.coef_.shape}  (10 classes x 784 pixels)\")\nprint(f\"Biases Shape:        {lr_model.intercept_.shape}      (10 classes)\")\nprint(f\"Total Parameters:    {lr_model.coef_.size + lr_model.intercept_.size:,} floats (~31 KB)\")\nprint(\"=\" * 50)",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Training Multiclass Logistic Regression on 60,000 samples...\n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "\n==================================================\nTRAINING COMPLETED\n==================================================\nTraining Time:       37.58 seconds\nWeights Shape:       (10, 784)  (10 classes x 784 pixels)\nBiases Shape:        (10,)      (10 classes)\nTotal Parameters:    7,850 floats (~31 KB)\n==================================================\n"
+        },
+        {
+          "outputType": "stream",
+          "name": "stderr",
+          "text": "D:\\Ai lab\\.venv\\Lib\\site-packages\\sklearn\\linear_model\\_logistic.py:599: ConvergenceWarning: lbfgs failed to converge after 100 iteration(s) (status=1):\nSTOP: TOTAL NO. OF ITERATIONS REACHED LIMIT\n\nIncrease the number of iterations to improve the convergence (max_iter=100).\nYou might also want to scale the data as shown in:\n    https://scikit-learn.org/stable/modules/preprocessing.html\nPlease also refer to the documentation for alternative solver options:\n    https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression\n  n_iter_i = _check_optimize_result(\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 7,
+      "cellType": "markdown",
+      "source": "## Step 3: Evaluating on the Test Dataset & Measuring Inference Speed\n\nNow we evaluate the model on the full **10,000 test images**.\n\nNotice the contrast with KNN:\n- KNN had to perform $10,000 \\times 60,000 = 600,000,000$ distance operations.\n- Logistic Regression simply multiplies the test matrix by the learned weight matrix: $\\mathbf{Z} = \\mathbf{X}_{\\text{test}} \\cdot \\mathbf{W}^T + \\mathbf{b}$."
+    },
+    {
+      "cellIndex": 8,
+      "cellType": "code",
+      "executionCount": 4,
+      "source": "print(\"Predicting on all 10,000 test samples...\")\nstart_pred = time.time()\ny_pred = lr_model.predict(X_test)\npred_duration = time.time() - start_pred\n\naccuracy = accuracy_score(y_test, y_pred)\ncorrect_count = int(np.sum(y_test == y_pred))\nincorrect_count = int(np.sum(y_test != y_pred))\navg_per_sample_ms = (pred_duration / len(X_test)) * 1000\n\nprint(\"=\" * 50)\nprint(\"LOGISTIC REGRESSION TEST PERFORMANCE\")\nprint(\"=\" * 50)\nprint(f\"Test Accuracy:             {accuracy * 100:.2f}%\")\nprint(f\"Correctly Classified:      {correct_count:,} / {len(y_test):,} images\")\nprint(f\"Misclassified:             {incorrect_count:,} / {len(y_test):,} images\")\nprint(f\"Total Prediction Time:     {pred_duration:.4f} seconds\")\nprint(f\"Average Latency / Sample:  {avg_per_sample_ms:.4f} ms\")\nprint(\"=\" * 50)",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "Predicting on all 10,000 test samples...\n==================================================\nLOGISTIC REGRESSION TEST PERFORMANCE\n==================================================\nTest Accuracy:             92.56%\nCorrectly Classified:      9,256 / 10,000 images\nMisclassified:             744 / 10,000 images\nTotal Prediction Time:     0.0216 seconds\nAverage Latency / Sample:  0.0022 ms\n==================================================\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 9,
+      "cellType": "markdown",
+      "source": "## Step 4: Classification Report & Confusion Matrix\n\nWe break down model performance across all 10 individual digits using a full classification report and an annotated confusion matrix heatmap."
+    },
+    {
+      "cellIndex": 10,
+      "cellType": "code",
+      "executionCount": 5,
+      "source": "class_names = [f\"Digit {i}\" for i in range(10)]\nreport_str = classification_report(y_test, y_pred, target_names=class_names, digits=4)\nprint(\"CLASSIFICATION REPORT (Multiclass Logistic Regression):\")\nprint(report_str)\n\n# Confusion Matrix\ncm = confusion_matrix(y_test, y_pred)\n\nfig, ax = plt.subplots(figsize=(9, 8))\ncax = ax.matshow(cm, cmap=\"Blues\", alpha=0.85)\nfig.colorbar(cax, fraction=0.046, pad=0.04, label=\"Number of Samples\")\n\nax.set_xticks(range(10))\nax.set_yticks(range(10))\nax.set_xticklabels(range(10), fontsize=10)\nax.set_yticklabels(range(10), fontsize=10)\nax.set_xlabel(\"Predicted Label\", fontsize=11, fontweight=\"bold\", labelpad=10)\nax.set_ylabel(\"True Label\", fontsize=11, fontweight=\"bold\", labelpad=10)\nax.set_title(\"Confusion Matrix: Logistic Regression on MNIST\", fontsize=13, fontweight=\"bold\", pad=15)\n\nfor i in range(10):\n    for j in range(10):\n        val = cm[i, j]\n        text_color = \"white\" if val > (cm.max() / 2) else \"black\"\n        fontweight = \"bold\" if i == j else \"normal\"\n        ax.text(j, i, str(val), ha=\"center\", va=\"center\", color=text_color, fontsize=9, fontweight=fontweight)\n\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "CLASSIFICATION REPORT (Multiclass Logistic Regression):\n              precision    recall  f1-score   support\n\n     Digit 0     0.9523    0.9776    0.9648       980\n     Digit 1     0.9627    0.9789    0.9707      1135\n     Digit 2     0.9288    0.8973    0.9128      1032\n     Digit 3     0.9033    0.9059    0.9046      1010\n     Digit 4     0.9383    0.9297    0.9340       982\n     Digit 5     0.9029    0.8756    0.8890       892\n     Digit 6     0.9372    0.9499    0.9435       958\n     Digit 7     0.9398    0.9261    0.9329      1028\n     Digit 8     0.8715    0.8840    0.8777       974\n     Digit 9     0.9108    0.9207    0.9157      1009\n\n    accuracy                         0.9256     10000\n   macro avg     0.9247    0.9246    0.9246     10000\nweighted avg     0.9255    0.9256    0.9255     10000\n\n"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_04/fig_01.png",
+          "figureNumber": "FIG 04.01",
+          "caption": "Extracted empirical artifact from Cell 10",
+          "alt": "Experiment 04 Figure 1"
+        }
+      ]
+    },
+    {
+      "cellIndex": 11,
+      "cellType": "markdown",
+      "source": "## Step 5: Visualizing Predictions & Failure Mode Inspection\n\nWe display sample correct predictions alongside sample misclassifications to understand the visual nature of the errors made by linear decision boundaries."
+    },
+    {
+      "cellIndex": 12,
+      "cellType": "code",
+      "executionCount": 6,
+      "source": "correct_indices = np.where(y_test == y_pred)[0]\nincorrect_indices = np.where(y_test != y_pred)[0]\n\n# 1. Display 10 Correctly Classified Samples\nnp.random.seed(42)\nsample_correct = np.random.choice(correct_indices, size=10, replace=False)\n\nfig, axes = plt.subplots(2, 5, figsize=(12, 5))\nfig.suptitle(\"Sample CORRECT Predictions (Logistic Regression)\", fontsize=14, fontweight=\"bold\", y=1.02, color=\"#15803d\")\n\nfor idx, ax in zip(sample_correct, axes.flatten()):\n    img = X_test[idx].reshape(28, 28)\n    true_lbl = y_test[idx]\n    pred_lbl = y_pred[idx]\n    ax.imshow(img, cmap=\"gray\")\n    ax.set_title(f\"True: {true_lbl} | Pred: {pred_lbl}\", fontsize=10, color=\"green\", fontweight=\"bold\")\n    ax.axis(\"off\")\n\nplt.tight_layout()\nplt.show()\n\n# 2. Display 10 Misclassified Samples\nsample_incorrect = incorrect_indices[:10]\n\nfig, axes = plt.subplots(2, 5, figsize=(12, 5))\nfig.suptitle(\"Sample MISCLASSIFIED Predictions (Failure Mode Inspection)\", fontsize=14, fontweight=\"bold\", y=1.02, color=\"#b91c1c\")\n\nfor idx, ax in zip(sample_incorrect, axes.flatten()):\n    img = X_test[idx].reshape(28, 28)\n    true_lbl = y_test[idx]\n    pred_lbl = y_pred[idx]\n    ax.imshow(img, cmap=\"gray\")\n    ax.set_title(f\"True: {true_lbl} -> Pred: {pred_lbl}\", fontsize=10, color=\"red\", fontweight=\"bold\")\n    ax.axis(\"off\")\n\nplt.tight_layout()\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_04/fig_02.png",
+          "figureNumber": "FIG 04.02",
+          "caption": "Extracted empirical artifact from Cell 12",
+          "alt": "Experiment 04 Figure 2"
+        },
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_04/fig_03.png",
+          "figureNumber": "FIG 04.03",
+          "caption": "Extracted empirical artifact from Cell 12",
+          "alt": "Experiment 04 Figure 3"
+        }
+      ]
+    },
+    {
+      "cellIndex": 13,
+      "cellType": "markdown",
+      "source": "## Step 6: Interpreting What the Model Learned (Visualizing Weights)\n\nOne of the most educational features of a linear model on image data is that **we can reshape its learned weights back into $28 \\times 28$ images**!\n\nBelow, each image shows the learned weights for one digit:\n- **Red/Warm colors (Positive Weights):** If a handwritten digit has ink in these pixels, the model increases the score for that digit.\n- **Blue/Cool colors (Negative Weights):** If a handwritten digit has ink in these pixels, the model penalizes the score for that digit.\n\nNotice how the learned weights visibly resemble digit templates (e.g. the loop for 0, the vertical stroke for 1, the curve for 3)!"
+    },
+    {
+      "cellIndex": 14,
+      "cellType": "code",
+      "executionCount": 7,
+      "source": "# Reshape weights: (10, 784) -> (10, 28, 28)\nweights_img = lr_model.coef_.reshape(10, 28, 28)\n\nfig, axes = plt.subplots(2, 5, figsize=(13, 5.5))\nfig.suptitle(\"Learned Weight Heatmaps for Each Digit (Red = Positive, Blue = Negative)\", fontsize=13, fontweight=\"bold\", y=0.98)\n\n# Use a symmetric diverging colormap centered at 0\nvabs = max(abs(weights_img.min()), abs(weights_img.max()))\n\nfor digit, ax in enumerate(axes.flatten()):\n    im = ax.imshow(weights_img[digit], cmap=\"coolwarm\", vmin=-vabs, vmax=vabs)\n    ax.set_title(f\"Digit {digit} Weights\", fontsize=11, fontweight=\"bold\")\n    ax.axis(\"off\")\n\nfig.colorbar(im, ax=axes.ravel().tolist(), fraction=0.015, pad=0.04, label=\"Weight Value\")\nplt.show()",
+      "outputs": [
+        {
+          "outputType": "image",
+          "src": "/artifacts/exp_04/fig_04.png",
+          "figureNumber": "FIG 04.04",
+          "caption": "Extracted empirical artifact from Cell 14",
+          "alt": "Experiment 04 Figure 4"
+        }
+      ]
+    },
+    {
+      "cellIndex": 15,
+      "cellType": "markdown",
+      "source": "## Step 7: Final Comparison Table & In-Depth Analysis\n\nWe now compare our two distinct machine learning paradigms side-by-side using the actual measured values from Experiment 01 (KNN with $K=3$) and this experiment (Logistic Regression)."
+    },
+    {
+      "cellIndex": 16,
+      "cellType": "code",
+      "executionCount": 8,
+      "source": "# Summary Comparison Table\ncomparison_data = [\n    {\n        \"Model\": \"KNN (K=3)\",\n        \"Main Idea\": \"Stores 60,000 examples; computes distances to all neighbors at test time\",\n        \"Training Time\": \"0.1764 s\",\n        \"Prediction Time\": \"15.88 s\",\n        \"Accuracy\": \"97.05%\"\n    },\n    {\n        \"Model\": \"Logistic Regression\",\n        \"Main Idea\": \"Learns 7,850 linear weights; calculates fast dot products at test time\",\n        \"Training Time\": f\"{train_duration:.2f} s\",\n        \"Prediction Time\": f\"{pred_duration:.4f} s\",\n        \"Accuracy\": f\"{accuracy * 100:.2f}%\"\n    }\n]\n\ncomp_df = pd.DataFrame(comparison_data)\nprint(\"=\" * 85)\nprint(\"MODEL COMPARISON: INSTANCE-BASED (KNN) vs. PARAMETERIZED (LOGISTIC REGRESSION)\")\nprint(\"=\" * 85)\nprint(comp_df.to_string(index=False))\nprint(\"=\" * 85)",
+      "outputs": [
+        {
+          "outputType": "stream",
+          "name": "stdout",
+          "text": "=====================================================================================\nMODEL COMPARISON: INSTANCE-BASED (KNN) vs. PARAMETERIZED (LOGISTIC REGRESSION)\n=====================================================================================\n              Model                                                                Main Idea Training Time Prediction Time Accuracy\n          KNN (K=3) Stores 60,000 examples; computes distances to all neighbors at test time      0.1764 s         15.88 s   97.05%\nLogistic Regression   Learns 7,850 linear weights; calculates fast dot products at test time       37.58 s        0.0216 s   92.56%\n=====================================================================================\n"
+        }
+      ]
+    },
+    {
+      "cellIndex": 17,
+      "cellType": "markdown",
+      "source": "## Step 8: Final Critical Analysis\n\n### Answers to Core Architectural Questions:\n\n1. **Which model achieved higher accuracy?**\n   - **KNN ($K=3$) achieved higher accuracy (97.05%)** compared to **Logistic Regression (92.56%)**.\n   - *Why?* Handwritten digits have intricate non-linear spatial variations (curving strokes, loops, angles). KNN forms flexible non-linear decision boundaries that match localized visual variations. In contrast, Logistic Regression is constrained to **linear decision hyperplanes**, which cannot completely separate overlapping non-linear digit manifolds in pixel space.\n\n2. **Which model trained faster?**\n   - **KNN trained vastly faster (0.18s vs. ~40.5s)**.\n   - *Why?* KNN does zero optimization during training\u2014it merely records references to the 60,000 samples. Logistic Regression must execute iterative numerical optimization (L-BFGS) across all 60,000 samples to solve for 7,850 weights.\n\n3. **Which model predicted faster?**\n   - **Logistic Regression predicted over 600 times faster (~0.026s vs. 15.88s)** for all 10,000 images.\n   - On a per-sample basis, Logistic Regression takes only **~0.0026 milliseconds**, whereas KNN requires **~1.59 milliseconds** per digit.\n\n4. **Why does Logistic Regression spend more time during training than KNN?**\n   - Logistic Regression front-loads all computational work into the training phase. It computes gradients, loss values, and updates 7,850 weights over multiple iterations to compress the essence of 60,000 images into a compact set of equations.\n\n5. **Why can Logistic Regression be much faster during prediction?**\n   - At inference time, Logistic Regression has already discarded the 60,000 training images. Classifying a test digit requires only $10$ dot products ($784$ multiplications and additions each) followed by an argmax. KNN, by contrast, must compare the query against all 60,000 training vectors, computing $600,000,000$ floating-point distances.\n\n6. **What is the fundamental difference between KNN and Logistic Regression?**\n   - **KNN is instance-based:** It keeps the data and postpones computation to prediction time.\n   - **Logistic Regression is parameterized:** It extracts patterns into fixed parameters (weights and biases) and discards the data.\n\n7. **What did we learn about parameterized vs. instance-based learning?**\n   - **Trade-off:** Parameterized models trade longer upfront training time and a linear inductive bias for **extreme inference speed and negligible memory footprint (~31 KB vs. ~188 MB)**.\n   - This insight forms the foundation for deep learning: **Neural Networks** build directly on Logistic Regression by stacking multiple parameterized layers and non-linear activations to achieve both high inference speed AND non-linear accuracy!"
+    }
+  ]
+}
